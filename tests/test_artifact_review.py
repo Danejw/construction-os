@@ -1,4 +1,8 @@
 # tests/test_artifact_review.py
+import pytest
+from pydantic import ValidationError
+
+from construction_os.domain.artifact_review import ArtifactReviewRun
 from construction_os.retrieval.types import EvidenceItem
 from construction_os.services.artifact_review import (
     aggregate_review_status,
@@ -50,3 +54,23 @@ def test_apply_claim_spans_replaces_and_skips_missing():
     )
     assert "The budget is $1.2M." in content
     assert skipped == ["missing span"]
+
+
+def test_artifact_review_run_default_status():
+    run = ArtifactReviewRun(
+        note_id="note:abc",
+        project_id="project:xyz",
+        content_hash="deadbeef",
+    )
+    assert run.status == "pending"
+    assert run.table_name == "artifact_review_run"
+
+
+def test_artifact_review_run_rejects_invalid_status():
+    with pytest.raises(ValidationError):
+        ArtifactReviewRun(
+            note_id="note:abc",
+            project_id="project:xyz",
+            content_hash="deadbeef",
+            status="bogus",  # type: ignore[arg-type]
+        )

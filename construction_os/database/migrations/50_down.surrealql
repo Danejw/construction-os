@@ -1,0 +1,2 @@
+REMOVE INDEX IF EXISTS idx_artifact_review_run_note_started ON TABLE artifact_review_run;
+REMOVE TABLE IF EXISTS artifact_review_run;
