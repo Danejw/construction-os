@@ -12,6 +12,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from loguru import logger
 
+from construction_os.ai.structured import invoke_structured
 from construction_os.domain.html_document import HtmlTemplate
 from construction_os.utils.html_media import expand_image_tokens
 from construction_os.utils.text_utils import extract_text_content
@@ -212,34 +213,6 @@ def _schema_for_slots(
     }
 
 
-def _coerce_result(result: Any) -> dict[str, Any]:
-    if isinstance(result, dict):
-        return result
-    model_dump = getattr(result, "model_dump", None)
-    if callable(model_dump):
-        dumped = model_dump()
-        return dumped if isinstance(dumped, dict) else {}
-    return {}
-
-
-def _extract_json_object(text: str) -> dict[str, Any]:
-    candidate = (text or "").strip()
-    fenced = re.search(
-        r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", candidate, re.IGNORECASE
-    )
-    if fenced:
-        candidate = fenced.group(1)
-    else:
-        start = candidate.find("{")
-        end = candidate.rfind("}")
-        if start >= 0 and end > start:
-            candidate = candidate[start : end + 1]
-    parsed = json.loads(candidate)
-    if not isinstance(parsed, dict):
-        raise ValueError("Template binding output must be a JSON object")
-    return parsed
-
-
 def _clip(value: str, limit: int) -> str:
     text = value or ""
     if len(text) <= limit:
@@ -283,7 +256,7 @@ async def _generate_binding_batch(
         SystemMessage(
             content=(
                 "You fill an arbitrary user-uploaded HTML document through a strict "
-                "runtime schema. Return only text values for the requested slots. "
+                "runtime schema. Provide text values for the requested slots. "
                 "Use the assistant result and grounding context as the source of truth. "
                 "Do not return HTML. Preserve headings, labels, legal boilerplate, and "
                 "other static copy when they are not data fields. Never invent facts. "
@@ -302,26 +275,12 @@ async def _generate_binding_batch(
         ),
     ]
 
-    try:
-        structured_model = model.with_structured_output(schema)
-        return _coerce_result(await structured_model.ainvoke(messages, config=config))
-    except Exception as structured_error:
-        logger.warning(
-            "Structured HTML template binding failed for batch {}: {}",
-            batch_index,
-            structured_error,
-        )
-
-    fallback_messages = messages + [
-        HumanMessage(
-            content=(
-                "Return only one JSON object whose keys exactly match the slot_id "
-                "values in the manifest and whose values are strings."
-            )
-        )
-    ]
-    fallback = await model.ainvoke(fallback_messages, config=config)
-    return _extract_json_object(extract_text_content(fallback.content))
+    return await invoke_structured(
+        messages,
+        schema,
+        model=model,
+        config=config,
+    )
 
 
 def _normalized_bindings(

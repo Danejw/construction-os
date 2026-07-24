@@ -1,6 +1,6 @@
 'use client'
 
-import { InlineSkeleton } from '@/components/common/LoadingSkeletons'
+import { AnimatedBrandLogo } from '@/components/common/AnimatedBrandLogo'
 import { cn } from '@/lib/utils'
 
 interface AgentActivityStatusProps {
@@ -39,7 +39,7 @@ export function AgentActivityStatus({
         )}
         {streamStatus ? (
           <div className="flex items-center gap-2">
-            <InlineSkeleton className="h-4 w-4" />
+            <AnimatedBrandLogo size={18} />
             <span>{streamStatus}</span>
           </div>
         ) : null}

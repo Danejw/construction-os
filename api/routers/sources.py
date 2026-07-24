@@ -161,6 +161,7 @@ async def get_sources(
                     pipeline_stage=row.get("pipeline_stage"),
                     stage=row.get("stage"),
                     kg_status=row.get("kg_status"),
+                    knowledge_graph=bool(row.get("knowledge_graph")),
                     drawing_status=row.get("drawing_status"),
                     processing_failures=row.get("processing_failures"),
                     failure_details_unavailable=row.get(
@@ -522,11 +523,17 @@ async def get_source_status(source_id: str):
         )
         embed_status, _ = fetched_command_status(embed_command)
         kg_status, _ = fetched_command_status(kg_command)
+        latest_kg_run = await _latest_kg_run(str(source.id or source_id))
+        knowledge_graph = bool(
+            latest_kg_run and str(latest_kg_run.get("status") or "") == "completed"
+        )
+        if knowledge_graph:
+            kg_status = "completed"
         processing_failures = resolve_processing_failures(
             getattr(source, "processing_failures", None),
             embed_command=embed_command,
             kg_command=kg_command,
-            kg_run=await _latest_kg_run(str(source.id or source_id)),
+            kg_run=latest_kg_run,
         )
         failure_details_unavailable = (
             pipeline_stage == "failed" and not processing_failures
@@ -565,6 +572,7 @@ async def get_source_status(source_id: str):
                     stage=stage,
                     embedded=embedded,
                     kg_status=kg_status,
+                    knowledge_graph=knowledge_graph,
                     processing_failures=processing_failures,
                     failure_details_unavailable=(
                         stage == "failed" and not processing_failures
@@ -578,6 +586,7 @@ async def get_source_status(source_id: str):
                 stage=pipeline_stage or "completed",
                 embedded=embedded,
                 kg_status=kg_status,
+                knowledge_graph=knowledge_graph,
                 processing_failures=processing_failures,
                 failure_details_unavailable=failure_details_unavailable,
             )
@@ -608,6 +617,7 @@ async def get_source_status(source_id: str):
                 stage=stage,
                 embedded=embedded,
                 kg_status=kg_status,
+                knowledge_graph=knowledge_graph,
                 processing_failures=processing_failures,
                 failure_details_unavailable=(
                     stage == "failed" and not processing_failures
@@ -624,6 +634,7 @@ async def get_source_status(source_id: str):
                 stage=getattr(source, "pipeline_stage", None),
                 embedded=embedded,
                 kg_status=kg_status,
+                knowledge_graph=knowledge_graph,
                 processing_failures=processing_failures,
                 failure_details_unavailable=failure_details_unavailable,
             )

@@ -1,6 +1,8 @@
 import { opportunitiesEn } from '../sections/opportunities'
+import { enUS } from '../en-US'
+import { fillMissingKeys } from '../fill-missing'
 
-export const bnIN = {
+const bnINTranslations = {
   "agentSteps": {
     "loading_skills": "Loading skills…",
     "retrieving_context": "Retrieving context…",
@@ -1406,3 +1408,5 @@ export const bnIN = {
     "viewDocs": "ডকুমেন্টেশন দেখুন"
   }
 }
+
+export const bnIN = fillMissingKeys(enUS, bnINTranslations)

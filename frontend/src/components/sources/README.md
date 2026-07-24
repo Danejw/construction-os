@@ -1,14 +1,6 @@
 # Sources Components
 
-The `AddSourceDialog` component provides a comprehensive interface for adding new sources to projects with async processing support.
-
-## Features
-
-- **Multi-step wizard**: Source type → Projects → Processing options
-- **Multi-project selection**: Add sources to multiple projects simultaneously  
-- **Artifacts**: Apply artifacts during source processing
-- **Batch upload**: Support for multiple URLs or files at once
-- **Async processing**: Non-blocking source ingestion with status polling
+The `AddSourceDialog` accepts file uploads only (drag-and-drop or click-to-browse) and starts processing immediately with defaults.
 
 ## Usage
 
@@ -34,7 +26,6 @@ import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
 
 ```tsx
 const { openSourceDialog } = useCreateDialogs()
-// Opens dialog from anywhere in the app
 openSourceDialog()
 ```
 
@@ -44,10 +35,8 @@ openSourceDialog()
 |------|------|---------|-------------|
 | `open` | `boolean` | - | Dialog open state |
 | `onOpenChange` | `(open: boolean) => void` | - | Open state callback |
-| `defaultprojectId` | `string` | - | Pre-select a project |
+| `defaultprojectId` | `string` | - | Attach uploaded sources to this project |
 
 ## Related Hooks
 
-- `useProjects()` - Fetches available projects
-- `useArtifacts()` - Fetches available artifacts
 - `useCreateSource()` - Submits source creation

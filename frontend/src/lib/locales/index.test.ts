@@ -72,12 +72,14 @@ describe('Unused Key Detection', () => {
     'tools.status.',      // t(`tools.status.${connection.status}`)
     'tools.toolCallStatus.', // t(`tools.toolCallStatus.${toolCall.status}`)
     'projects.artifactPhases.', // t(`projects.artifactPhases.${phase}`)
+    'companyProfile.source.', // t(`companyProfile.source.${profile.source}`)
   ]
 
   it(
     'all en-US leaf keys should be referenced in source files',
     () => {
-      const srcDir = path.resolve(__dirname, '../../..')
+      // Scan application source only — not frontend/.next or other build output.
+      const srcDir = path.resolve(__dirname, '../..')
       const localesDir = path.resolve(__dirname)
 
       const files = fs.readdirSync(srcDir, { recursive: true }) as string[]

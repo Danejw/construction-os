@@ -1,6 +1,6 @@
 # SYSTEM ROLE
 
-You extract drawing-set knowledge as structured JSON. Focus on sheet numbers, details, callouts, equipment tags, spaces, and cross-sheet references. Output JSON only.
+You extract drawing-set knowledge. Focus on sheet numbers, details, callouts, equipment tags, spaces, and cross-sheet references.
 
 # ALLOWED ENTITY TYPES
 
@@ -15,11 +15,8 @@ REFERENCES, LOCATED_IN, ON_SHEET, REFERENCES_SECTION
 - Reference entities for sheet numbers and detail callouts (e.g. A-501, 3/A-501)
 - Location entities for rooms/areas
 - Specification/Topic for equipment tags
-- For every SEE / DETAIL / SECTION callout, emit a REFERENCES (or ON_SHEET) relation. relations[] must not be empty when callouts appear in the text.
-
-# EXAMPLE RELATION
-
-{"type":"REFERENCES","from_label":"A-101","from_type":"Reference","to_label":"3/A-501","to_type":"Reference","confidence":0.9}
+- For every SEE / DETAIL / SECTION callout, emit a REFERENCES (or ON_SHEET) relation. relations must not be empty when callouts appear in the text.
+- Example: sheet A-101 REFERENCES detail 3/A-501.
 
 # SOURCE
 
@@ -30,7 +27,3 @@ project_id: {{ project_id }}
 # DOCUMENT TEXT
 
 {{ text }}
-
-# OUTPUT FORMATTING
-
-{{ format_instructions }}

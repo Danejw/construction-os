@@ -53,8 +53,7 @@ export interface SourcesColumnListBodyProps {
   onEnterSelection: (sourceId: string) => void
   drawingRunBySourceId: Map<string, { status: string; runId: string }>
   onRunDrawingExtraction: (sourceId: string) => void
-  onInspectDrawing: (runId: string) => void
-  drawingBusy: boolean
+  pendingDrawingSourceIds: Set<string> | null
   isFetchingNextPage?: boolean
 }
 
@@ -95,8 +94,7 @@ export function SourcesColumnListBody({
   onEnterSelection,
   drawingRunBySourceId,
   onRunDrawingExtraction,
-  onInspectDrawing,
-  drawingBusy,
+  pendingDrawingSourceIds,
   isFetchingNextPage,
 }: SourcesColumnListBodyProps) {
   const { t } = useTranslation()
@@ -149,73 +147,98 @@ export function SourcesColumnListBody({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="h-7"
+                    size="icon"
+                    className="size-7 shrink-0"
                     disabled={bulkBusy || bulkRetryPending}
+                    aria-label={
+                      bulkRetryPending
+                        ? t('sources.retryingProcessing')
+                        : t('sources.retryProcessing')
+                    }
+                    title={
+                      bulkRetryPending
+                        ? t('sources.retryingProcessing')
+                        : t('sources.retryProcessing')
+                    }
                     onClick={() => void onBulkRetryProcessing()}
                   >
                     <RefreshCw
                       className={cn(
-                        'mr-1 h-3.5 w-3.5',
+                        'size-3.5',
                         bulkRetryPending && 'animate-spin'
                       )}
                     />
-                    {bulkRetryPending
-                      ? t('sources.retryingProcessing')
-                      : t('sources.retryProcessing')}
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="h-7"
+                    size="icon"
+                    className="size-7 shrink-0"
                     disabled={bulkBusy || bulkExtractPending}
+                    aria-label={
+                      bulkExtractPending
+                        ? t('sources.buildingKnowledgeGraph')
+                        : t('sources.buildKnowledgeGraph')
+                    }
+                    title={
+                      bulkExtractPending
+                        ? t('sources.buildingKnowledgeGraph')
+                        : t('sources.buildKnowledgeGraph')
+                    }
                     onClick={() => void onBulkBuildKnowledgeGraph()}
                   >
-                    <Network className="mr-1 h-3.5 w-3.5" />
-                    {bulkExtractPending
-                      ? t('sources.buildingKnowledgeGraph')
-                      : t('sources.buildKnowledgeGraph')}
+                    <Network className="size-3.5" />
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="h-7"
+                    size="icon"
+                    className="size-7 shrink-0"
                     disabled={
                       bulkBusy || extractDrawingsPending || !canExtractDrawings
                     }
+                    aria-label={
+                      extractDrawingsPending
+                        ? t('sources.extractingArchitecturalDrawings')
+                        : t('sources.extractArchitecturalDrawings')
+                    }
                     title={
                       canExtractDrawings
-                        ? t('sources.extractArchitecturalDrawings')
+                        ? extractDrawingsPending
+                          ? t('sources.extractingArchitecturalDrawings')
+                          : t('sources.extractArchitecturalDrawings')
                         : t('sources.drawingExtractPdfOnly')
                     }
                     onClick={() => void onBulkExtractDrawings()}
                   >
-                    <DraftingCompass className="mr-1 h-3.5 w-3.5" />
-                    {extractDrawingsPending
-                      ? t('sources.extractingArchitecturalDrawings')
-                      : t('sources.extractArchitecturalDrawings')}
+                    <DraftingCompass
+                      className={cn(
+                        'size-3.5',
+                        extractDrawingsPending && 'animate-pulse'
+                      )}
+                    />
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="h-7"
+                    size="icon"
+                    className="size-7 shrink-0"
+                    aria-label={t('common.bulkRemove')}
+                    title={t('common.bulkRemove')}
                     onClick={onBulkRemoveOpen}
                   >
-                    <Unlink className="mr-1 h-3.5 w-3.5" />
-                    {t('common.bulkRemove')}
+                    <Unlink className="size-3.5" />
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="h-7 text-destructive hover:text-destructive"
+                    size="icon"
+                    className="size-7 shrink-0 text-destructive hover:text-destructive"
+                    aria-label={t('common.bulkDelete')}
+                    title={t('common.bulkDelete')}
                     onClick={onBulkDeleteOpen}
                   >
-                    <Trash2 className="mr-1 h-3.5 w-3.5" />
-                    {t('common.bulkDelete')}
+                    <Trash2 className="size-3.5" />
                   </Button>
                 </ListSelectionBar>
               )}
@@ -249,8 +272,8 @@ export function SourcesColumnListBody({
                     drawingRunBySourceId.get(source.id)?.runId ?? null
                   }
                   onRunDrawingExtraction={onRunDrawingExtraction}
-                  onInspectDrawing={onInspectDrawing}
-                  drawingBusy={drawingBusy}
+                  onInspectDrawing={() => onSourceClick(source.id)}
+                  drawingBusy={Boolean(pendingDrawingSourceIds?.has(source.id))}
                 />
               ))}
               {isFetchingNextPage && <CompactListRowSkeleton />}

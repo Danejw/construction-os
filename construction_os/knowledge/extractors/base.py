@@ -19,7 +19,8 @@ class ExtractedMention(BaseModel):
 class ExtractedEntity(BaseModel):
     label: str
     type: str = "Topic"
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    # str values only — free-form Dict[str, Any] breaks provider strict json_schema
+    metadata: Dict[str, str] = Field(default_factory=dict)
 
 
 class ExtractedClaim(BaseModel):

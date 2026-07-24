@@ -54,6 +54,8 @@ export interface SourceListResponse {
   pipeline_stage?: string
   stage?: string
   kg_status?: string | null
+  /** Durable flag — true when a completed KG extraction exists (like `embedded`). */
+  knowledge_graph?: boolean
   drawing_status?: string | null
   processing_failures?: SourceProcessingFailures
   failure_details_unavailable?: boolean
@@ -88,6 +90,7 @@ export interface SourceStatusResponse {
   stage?: string
   embedded?: boolean | null
   kg_status?: string | null
+  knowledge_graph?: boolean | null
   processing_failures?: SourceProcessingFailures
   failure_details_unavailable?: boolean
 }

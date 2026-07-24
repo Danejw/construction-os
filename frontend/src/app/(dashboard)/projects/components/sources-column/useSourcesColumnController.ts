@@ -66,11 +66,9 @@ export function useSourcesColumnController({
 }: UseSourcesColumnControllerArgs) {
   const { t } = useTranslation()
   const [sourcesView, setSourcesView] = useState<SourcesViewMode>('list')
-  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [isArtifactDragOver, setIsArtifactDragOver] = useState(false)
   const [dragOverKind, setDragOverKind] = useState<ArtifactDragKind | null>(null)
-  const [addExistingDialogOpen, setAddExistingDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [sourceToDelete, setSourceToDelete] = useState<string | null>(null)
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
@@ -78,10 +76,6 @@ export function useSourcesColumnController({
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkRemoveOpen, setBulkRemoveOpen] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
-  const [drawingResultsRunId, setDrawingResultsRunId] = useState<string | null>(
-    null
-  )
-  const [drawingResultsOpen, setDrawingResultsOpen] = useState(false)
   const [sourceFilters, setSourceFilters] = useState<SourceListFilterState>(
     DEFAULT_SOURCE_LIST_FILTERS
   )
@@ -125,16 +119,11 @@ export function useSourcesColumnController({
     if (selectedList.length === 0 || !canExtractDrawings) return
     setBulkBusy(true)
     try {
-      const result = await extractDrawings.mutateAsync({
+      await extractDrawings.mutateAsync({
         source_ids: selectedList,
         project_id: projectId,
         force: false,
       })
-      const firstRun = result.jobs.find((j) => j.success && j.run_id)?.run_id
-      if (firstRun) {
-        setDrawingResultsRunId(firstRun)
-        setDrawingResultsOpen(true)
-      }
       clearSelection()
     } catch (error) {
       console.error('Failed to queue drawing extractions:', error)
@@ -187,16 +176,11 @@ export function useSourcesColumnController({
   const handleRunDrawingExtraction = useCallback(
     async (sourceId: string) => {
       try {
-        const result = await extractDrawings.mutateAsync({
+        await extractDrawings.mutateAsync({
           source_ids: [sourceId],
           project_id: projectId,
           force: true,
         })
-        const runId = result.jobs.find((j) => j.success && j.run_id)?.run_id
-        if (runId) {
-          setDrawingResultsRunId(runId)
-          setDrawingResultsOpen(true)
-        }
       } catch (error) {
         console.error('Failed to queue drawing extraction:', error)
       }
@@ -204,10 +188,11 @@ export function useSourcesColumnController({
     [extractDrawings, projectId]
   )
 
-  const handleInspectDrawing = useCallback((runId: string) => {
-    setDrawingResultsRunId(runId)
-    setDrawingResultsOpen(true)
-  }, [])
+  const pendingDrawingSourceIds = useMemo(() => {
+    if (!extractDrawings.isPending) return null
+    const ids = extractDrawings.variables?.source_ids
+    return ids && ids.length > 0 ? new Set(ids) : null
+  }, [extractDrawings.isPending, extractDrawings.variables?.source_ids])
 
   const handleBulkBuildKnowledgeGraph = useCallback(async () => {
     if (selectedList.length === 0) return
@@ -425,12 +410,8 @@ export function useSourcesColumnController({
   return {
     sourcesView,
     setSourcesView,
-    dropdownOpen,
-    setDropdownOpen,
     addDialogOpen,
     setAddDialogOpen,
-    addExistingDialogOpen,
-    setAddExistingDialogOpen,
     deleteDialogOpen,
     setDeleteDialogOpen,
     removeDialogOpen,
@@ -440,9 +421,6 @@ export function useSourcesColumnController({
     bulkRemoveOpen,
     setBulkRemoveOpen,
     bulkBusy,
-    drawingResultsRunId,
-    drawingResultsOpen,
-    setDrawingResultsOpen,
     sourceFilters,
     setSourceFilters,
     selectedIds,
@@ -454,11 +432,11 @@ export function useSourcesColumnController({
     canExtractDrawings,
     handleBulkExtractDrawings,
     drawingRunBySourceId,
+    pendingDrawingSourceIds,
     filteredSources,
     sourceExtensions,
     handleSelectAllVisible,
     handleRunDrawingExtraction,
-    handleInspectDrawing,
     handleBulkBuildKnowledgeGraph,
     handleBulkRetryProcessing,
     enableArtifactDrop,

@@ -1,6 +1,6 @@
 # SYSTEM ROLE
 
-You extract contract/agreement knowledge as structured JSON. Focus on parties, dates, requirements, obligations, deliverables, and decisions. Output JSON only.
+You extract contract/agreement knowledge. Focus on parties, dates, requirements, obligations, deliverables, and decisions.
 
 # ALLOWED ENTITY TYPES
 
@@ -17,10 +17,7 @@ REFERENCES, LOCATED_IN, ON_SHEET, REFERENCES_SECTION
 - Requirements and obligations
 - Deliverables
 - Cross-references to exhibits/appendices via REFERENCES; emit a relation for every explicit exhibit/appendix pointer
-
-# EXAMPLE RELATION
-
-{"type":"REFERENCES","from_label":"Agreement","from_type":"Reference","to_label":"Exhibit A","to_type":"Reference","confidence":0.9}
+- Example: Agreement REFERENCES Exhibit A.
 
 # SOURCE
 
@@ -31,7 +28,3 @@ project_id: {{ project_id }}
 # DOCUMENT TEXT
 
 {{ text }}
-
-# OUTPUT FORMATTING
-
-{{ format_instructions }}

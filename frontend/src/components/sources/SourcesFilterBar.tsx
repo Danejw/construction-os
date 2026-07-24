@@ -59,7 +59,7 @@ export function SourcesFilterBar({
   return (
     <div
       className={cn(
-        'flex shrink-0 flex-wrap items-center gap-0.5 border-b px-1.5 py-0.5',
+        'flex shrink-0 flex-wrap items-center gap-0.5 px-1.5 py-0.5',
         className
       )}
     >

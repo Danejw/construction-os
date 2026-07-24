@@ -1,6 +1,8 @@
 import { opportunitiesEn } from '../sections/opportunities'
+import { enUS } from '../en-US'
+import { fillMissingKeys } from '../fill-missing'
 
-export const ptBR = {
+const ptBRTranslations = {
   "agentSteps": {
     "loading_skills": "Loading skills…",
     "retrieving_context": "Retrieving context…",
@@ -1406,3 +1408,5 @@ export const ptBR = {
     "viewDocs": "Ver documentação"
   }
 }
+
+export const ptBR = fillMissingKeys(enUS, ptBRTranslations)

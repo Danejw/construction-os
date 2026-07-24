@@ -55,7 +55,7 @@ export function isEmbeddingComplete(source: SourceListResponse): boolean {
 }
 
 export function isKnowledgeGraphComplete(source: SourceListResponse): boolean {
-  return source.kg_status === 'completed'
+  return Boolean(source.knowledge_graph) || source.kg_status === 'completed'
 }
 
 export function isDrawingComplete(

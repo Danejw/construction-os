@@ -131,7 +131,6 @@ async def vector_search(
             source_ids, note_ids = await get_project_scope_ids(project_id)
             fetch_limit = max(results * 5, 50)
 
-        # Use unified embedding function (handles chunking if query is very long)
         embed = await generate_embedding(keyword)
         search_results = await repo_query(
             """

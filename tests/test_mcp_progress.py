@@ -21,7 +21,9 @@ def test_emit_mcp_tool_call_dispatches_public_payload():
         arguments={"text": "hi"},
     )
 
-    with patch("construction_os.mcp.progress.dispatch_custom_event") as mock_dispatch:
+    with patch(
+        "construction_os.tool_runtime.progress.dispatch_custom_event"
+    ) as mock_dispatch:
         emit_mcp_tool_call(audit, config={"callbacks": []})
 
     mock_dispatch.assert_called_once()
@@ -37,6 +39,8 @@ def test_emit_mcp_tool_call_dispatches_public_payload():
 
 def test_emit_mcp_tool_call_noop_without_config():
     audit = MagicMock(spec=ChatToolCall)
-    with patch("construction_os.mcp.progress.dispatch_custom_event") as mock_dispatch:
+    with patch(
+        "construction_os.tool_runtime.progress.dispatch_custom_event"
+    ) as mock_dispatch:
         emit_mcp_tool_call(audit, config=None)
     mock_dispatch.assert_not_called()

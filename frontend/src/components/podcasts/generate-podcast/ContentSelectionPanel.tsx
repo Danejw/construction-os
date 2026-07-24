@@ -62,11 +62,11 @@ export interface ContentSelectionPanelProps {
   tokenCount: number
   charCount: number
   expandedProjects: string[]
-  setexpandedProjects: (projects: string[]) => void
+  setExpandedProjects: (projects: string[]) => void
   selections: Record<string, ProjectSelection>
   sourcesByProject: Record<string, SourceListResponse[]>
   notesByProject: Record<string, ProjectArtifactResponse[]>
-  fetchingprojectIds: Set<string>
+  fetchingProjectIds: Set<string>
   handleProjectToggle: (projectId: string, checked: boolean | 'indeterminate') => void
   handleSourceModeChange: (projectId: string, sourceId: string, mode: SourceMode) => void
   handleNoteToggle: (projectId: string, noteId: string, checked: boolean | 'indeterminate') => void
@@ -81,11 +81,11 @@ export function ContentSelectionPanel({
   tokenCount,
   charCount,
   expandedProjects,
-  setexpandedProjects,
+  setExpandedProjects,
   selections,
   sourcesByProject,
   notesByProject,
-  fetchingprojectIds,
+  fetchingProjectIds,
   handleProjectToggle,
   handleSourceModeChange,
   handleNoteToggle,
@@ -93,8 +93,6 @@ export function ContentSelectionPanel({
 }: ContentSelectionPanelProps) {
   const { t, language } = useTranslation()
 
-  // Cache all translation strings at render time to avoid repeated Proxy accesses in loops
-  // This prevents the infinite loop detection from triggering
   const tr = {
     content: t('podcasts.content'),
     contentDesc: t('podcasts.contentDesc'),
@@ -120,7 +118,6 @@ export function ContentSelectionPanel({
     fullContent: t('podcasts.fullContent'),
   }
 
-  // Pre-compute source modes once to avoid repeated t.podcasts access in loops
   const sourceModes = [
     { value: 'full', label: tr.fullContent },
   ] as const
@@ -168,7 +165,7 @@ export function ContentSelectionPanel({
             <Accordion
               type="multiple"
               value={expandedProjects}
-              onValueChange={(value) => setexpandedProjects(value as string[])}
+              onValueChange={(value) => setExpandedProjects(value as string[])}
               className="w-full"
             >
               {projects.map((project: ProjectResponse, index: number) => {
@@ -230,7 +227,7 @@ export function ContentSelectionPanel({
                             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               {tr.sources}
                             </h4>
-                            {fetchingprojectIds.has(project.id) && (
+                            {fetchingProjectIds.has(project.id) && (
                               <InlineSkeleton className="h-3 w-3" />
                             )}
                           </div>

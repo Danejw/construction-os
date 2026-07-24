@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol
@@ -94,80 +93,35 @@ class GeminiVisionClient:
             model=model_name,
             temperature=0,
         )
-        # Prefer structured output when supported
+        structured = llm.with_structured_output(schema)
+        content_parts: list[Any] = [{"type": "text", "text": prompt}]
+        for path in image_paths:
+            data = Path(path).read_bytes()
+            b64 = base64.b64encode(data).decode("ascii")
+            content_parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": f"data:image/png;base64,{b64}",
+                }
+            )
         try:
-            structured = llm.with_structured_output(schema)
-            content_parts: list[Any] = [{"type": "text", "text": prompt}]
-            for path in image_paths:
-                data = Path(path).read_bytes()
-                b64 = base64.b64encode(data).decode("ascii")
-                content_parts.append(
-                    {
-                        "type": "image_url",
-                        "image_url": f"data:image/png;base64,{b64}",
-                    }
-                )
             result = await structured.ainvoke(
                 [HumanMessage(content=content_parts)]
             )
-            if hasattr(result, "model_dump"):
-                return result.model_dump()
-            if isinstance(result, dict):
-                return result
-            return json.loads(str(result))
         except Exception as exc:
             logger.warning(
                 "Structured vision call failed (model={}): {}", model_name, exc
             )
-            # Fallback: plain JSON instruction
-            content_parts = [
-                {
-                    "type": "text",
-                    "text": (
-                        f"{prompt}\n\nReturn ONLY valid JSON matching this schema:\n"
-                        f"{json.dumps(schema)}"
-                    ),
-                }
-            ]
-            for path in image_paths:
-                data = Path(path).read_bytes()
-                b64 = base64.b64encode(data).decode("ascii")
-                content_parts.append(
-                    {
-                        "type": "image_url",
-                        "image_url": f"data:image/png;base64,{b64}",
-                    }
-                )
-            response = await llm.ainvoke([HumanMessage(content=content_parts)])
-            text = getattr(response, "content", None) or str(response)
-            return _parse_json_loose(text)
-
-
-def _parse_json_loose(text: str) -> Dict[str, Any]:
-    text = text.strip()
-    if text.startswith("```"):
-        text = re_strip_fence(text)
-    try:
-        parsed = json.loads(text)
-        if isinstance(parsed, dict):
-            return parsed
-        raise ValueError("JSON root must be an object")
-    except json.JSONDecodeError as exc:
-        # try to find first {...}
-        start = text.find("{")
-        end = text.rfind("}")
-        if start >= 0 and end > start:
-            return json.loads(text[start : end + 1])
-        raise ValueError(f"Invalid model JSON: {exc}") from exc
-
-
-def re_strip_fence(text: str) -> str:
-    lines = text.splitlines()
-    if lines and lines[0].startswith("```"):
-        lines = lines[1:]
-    if lines and lines[-1].startswith("```"):
-        lines = lines[:-1]
-    return "\n".join(lines)
+            raise RuntimeError(
+                f"Structured vision extraction failed for model {model_name}: {exc}"
+            ) from exc
+        if hasattr(result, "model_dump"):
+            return result.model_dump()
+        if isinstance(result, dict):
+            return result
+        raise TypeError(
+            f"Structured vision output must be a dict, got {type(result).__name__}"
+        )
 
 
 _VISION_OVERRIDE: Optional[VisionClient] = None

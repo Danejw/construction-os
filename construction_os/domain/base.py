@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar, Union, cast
 
 from loguru import logger
@@ -160,18 +160,19 @@ class ObjectModel(BaseModel):
         try:
             self.model_validate(self.model_dump(), strict=True)
             data = self._prepare_save_data()
-            data["updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            data["updated"] = datetime.now(timezone.utc)
 
             repo_result: Union[List[Dict[str, Any]], Dict[str, Any]]
             if self.id is None:
-                data["created"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                data["created"] = datetime.now(timezone.utc)
                 repo_result = await repo_create(self.__class__.table_name, data)
             else:
-                data["created"] = (
-                    self.created.strftime("%Y-%m-%d %H:%M:%S")
-                    if isinstance(self.created, datetime)
-                    else self.created
-                )
+                if isinstance(self.created, datetime):
+                    data["created"] = self.created
+                elif isinstance(self.created, str) and self.created:
+                    data["created"] = datetime.fromisoformat(self.created)
+                else:
+                    data["created"] = self.created
                 logger.debug(f"Updating record with id {self.id}")
                 repo_result = await repo_update(
                     self.__class__.table_name, self.id, data

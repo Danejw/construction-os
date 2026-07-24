@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -12,16 +11,11 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError as JsonSchemaValidationError
 from loguru import logger
 
-from construction_os.ai.provision import provision_langchain_model
+from construction_os.ai.structured import invoke_structured
 from construction_os.domain.content_settings import ContentSettings
 from construction_os.exceptions import InvalidInputError
-from construction_os.knowledge.extractors.parse import (
-    extract_json_object,
-    split_text_windows,
-)
-from construction_os.utils import clean_thinking_content
+from construction_os.knowledge.extractors.parse import split_text_windows
 from construction_os.utils.error_classifier import classify_error
-from construction_os.utils.text_utils import extract_text_content
 
 MAX_COMBINED_CHARS = 24_000
 
@@ -113,43 +107,23 @@ async def _invoke_fill_llm(
     instructions: Optional[str],
     model_id: Optional[str],
 ) -> Dict[str, Any]:
-    schema_json = json.dumps(schema, indent=2)
     prompt = Prompter(prompt_template="tools/schema_autofill").render(
         data={
             "text": text,
-            "schema_json": schema_json,
             "instructions": (instructions or "").strip() or None,
         }
     )
-    model = await provision_langchain_model(
-        prompt,
-        model_id,
-        "tools",
-        max_tokens=4000,
-        structured=dict(type="json"),
-    )
-
-    async def _once(prompt_text: str) -> Dict[str, Any]:
-        ai_message = await model.ainvoke(prompt_text)
-        message_content = extract_text_content(ai_message.content)
-        cleaned = clean_thinking_content(message_content)
-        payload = json.loads(extract_json_object(cleaned))
-        return _validate_data(payload, schema)
-
     try:
-        return await _once(prompt)
-    except (ValueError, InvalidInputError, json.JSONDecodeError) as first_error:
-        logger.warning("Schema autofill parse failed ({}), retrying once", first_error)
-        retry_prompt = (
-            f"{prompt}\n\n"
-            "# RETRY\n"
-            f"Your previous output failed validation: {first_error}\n"
-            "Return ONLY valid JSON matching the schema. No prose.\n"
+        payload = await invoke_structured(
+            prompt,
+            schema,
+            model_id=model_id,
+            default_type="tools",
+            max_tokens=4000,
         )
-        try:
-            return await _once(retry_prompt)
-        except (ValueError, InvalidInputError, json.JSONDecodeError) as second_error:
-            raise InvalidInputError(str(second_error)) from second_error
+    except Exception as exc:
+        raise InvalidInputError(f"Structured autofill failed: {exc}") from exc
+    return _validate_data(payload, schema)
 
 
 async def autofill_from_files(

@@ -7,10 +7,9 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ai_prompter import Prompter
-from langchain_core.output_parsers.pydantic import PydanticOutputParser
 from loguru import logger
 
-from construction_os.ai.provision import provision_langchain_model
+from construction_os.ai.structured import invoke_structured
 from construction_os.domain.knowledge_graph import normalize_entity_key
 from construction_os.knowledge.extractors.base import (
     ExtractedClaim,
@@ -20,7 +19,6 @@ from construction_os.knowledge.extractors.base import (
     ExtractionPayload,
 )
 from construction_os.utils import clean_thinking_content
-from construction_os.utils.text_utils import extract_text_content
 
 WINDOW_SIZE = 8000
 WINDOW_OVERLAP = 500
@@ -34,7 +32,10 @@ _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def extract_json_object(raw: str) -> str:
-    """Pull a JSON object string from model output (fenced or bare)."""
+    """Pull a JSON object string from model output (fenced or bare).
+
+    Kept for unit tests and non-LLM callers; live extraction uses structured outputs.
+    """
     text = (raw or "").strip()
     if not text:
         raise ValueError("parse_failed: empty model response")
@@ -57,7 +58,10 @@ def extract_json_object(raw: str) -> str:
 
 
 def parse_extraction_payload(raw: str) -> ExtractionPayload:
-    """Parse model text into ExtractionPayload; raises ValueError on failure."""
+    """Parse model text into ExtractionPayload; raises ValueError on failure.
+
+    Kept for unit tests; live extraction uses API structured outputs.
+    """
     cleaned = clean_thinking_content(raw)
     json_str = extract_json_object(cleaned)
     try:
@@ -65,16 +69,10 @@ def parse_extraction_payload(raw: str) -> ExtractionPayload:
     except json.JSONDecodeError as e:
         raise ValueError(f"parse_failed: invalid JSON ({e})") from e
 
-    parser = PydanticOutputParser(pydantic_object=ExtractionPayload)
     try:
-        # Prefer pydantic validation via parser when possible
         return ExtractionPayload.model_validate(data)
     except Exception as e:
-        # Fall back to LangChain parser (handles some edge formats)
-        try:
-            return parser.parse(cleaned)
-        except Exception as e2:
-            raise ValueError(f"parse_failed: schema validation ({e2})") from e
+        raise ValueError(f"parse_failed: schema validation ({e})") from e
 
 
 def split_text_windows(
@@ -232,8 +230,7 @@ async def invoke_extractor_llm(
     extractor: Optional[str] = None,
     max_tokens: int = 4000,
 ) -> ExtractionPayload:
-    """Render prompt, call tools model, parse JSON; one validation retry then raise."""
-    parser = PydanticOutputParser(pydantic_object=ExtractionPayload)
+    """Render prompt and extract via API structured outputs."""
     data: Dict[str, Any] = {
         "text": text,
         "chunk_count": chunk_count,
@@ -243,38 +240,16 @@ async def invoke_extractor_llm(
     if extractor:
         data["extractor"] = extractor
 
-    prompt = Prompter(prompt_template=prompt_template, parser=parser).render(data=data)
-    model = await provision_langchain_model(
-        prompt,
-        None,
-        "tools",
-        max_tokens=max_tokens,
-        structured=dict(type="json"),
-    )
-
-    async def _once(prompt_text: str) -> ExtractionPayload:
-        ai_message = await model.ainvoke(prompt_text)
-        message_content = extract_text_content(ai_message.content)
-        return parse_extraction_payload(message_content)
-
+    prompt = Prompter(prompt_template=prompt_template).render(data=data)
     try:
-        return await _once(prompt)
-    except ValueError as first_error:
-        logger.warning(
-            "KG extract parse failed for {} ({}), retrying once",
-            extractor or prompt_template,
-            first_error,
+        return await invoke_structured(
+            prompt,
+            ExtractionPayload,
+            default_type="tools",
+            max_tokens=max_tokens,
         )
-        retry_prompt = (
-            f"{prompt}\n\n"
-            "# RETRY\n"
-            f"Your previous output failed validation: {first_error}\n"
-            "Return ONLY valid JSON matching the schema. No prose.\n"
-        )
-        try:
-            return await _once(retry_prompt)
-        except ValueError as second_error:
-            raise ValueError(str(second_error)) from second_error
+    except Exception as exc:
+        raise ValueError(f"structured_extract_failed: {exc}") from exc
 
 
 async def extract_with_windows(

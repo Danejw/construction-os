@@ -196,7 +196,8 @@ export function useCreateSource() {
   const { t } = useTranslation()
 
   return useMutation({
-    mutationFn: (data: CreateSourceRequest) => sourcesApi.create(data),
+    mutationFn: (data: CreateSourceRequest & { file?: File }) =>
+      sourcesApi.create(data),
     onMutate: async (variables) => {
       await queryClient.cancelQueries({ queryKey: ['sources'] })
       const previous = snapshotSourceListQueries(queryClient)
@@ -312,16 +313,30 @@ export function useSourceStatus(sourceId: string, enabled = true) {
     enabled: !!sourceId && enabled,
     refetchInterval: (query) => {
       // Auto-refresh every 2 seconds while the full pipeline is in progress
-      // (extract → embed → knowledge graph).
+      // (extract → embed → knowledge graph), including after overall status
+      // flips to completed while the KG child job / durable flag is settling.
+      // Embeddings stay green because `embedded` is true before stage exits;
+      // keep polling until `knowledge_graph` is true once a KG job finished.
       const data = query.state.data as SourceStatusResponse | undefined
       const stage = data?.stage
+      const kgStatus = data?.kg_status
+      const awaitingKgDurable =
+        data?.knowledge_graph !== true &&
+        (stage === 'knowledge_graph' ||
+          kgStatus === 'running' ||
+          kgStatus === 'queued' ||
+          kgStatus === 'new')
       if (
         data?.status === 'running' ||
         data?.status === 'queued' ||
         data?.status === 'new' ||
         stage === 'extracting' ||
         stage === 'embedding' ||
-        stage === 'knowledge_graph'
+        stage === 'knowledge_graph' ||
+        kgStatus === 'running' ||
+        kgStatus === 'queued' ||
+        kgStatus === 'new' ||
+        awaitingKgDurable
       ) {
         return 2000
       }
@@ -464,6 +479,7 @@ export function useEmbedSource() {
           stage: 'embedding',
           embedded: prev?.embedded ?? false,
           kg_status: prev?.kg_status ?? null,
+          knowledge_graph: prev?.knowledge_graph ?? false,
           processing_failures: prev?.processing_failures,
           failure_details_unavailable: prev?.failure_details_unavailable,
         })

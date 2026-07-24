@@ -30,8 +30,7 @@ async def embedding_dimension_health() -> EmbeddingDimensionHealth:
     try:
         return await get_embedding_dimension_health()
     except Exception as e:
-        logger.error(f"Failed to compute embedding dimension health: {e}")
-        logger.exception(e)
+        logger.exception("Failed to compute embedding dimension health: {}", e)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to compute embedding dimension health: {str(e)}",

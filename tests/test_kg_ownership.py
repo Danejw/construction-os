@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from construction_os.domain.knowledge_graph import (
     PROJECT_WIDE_MERGE_TYPES,
+    KnowledgeGraphRepository,
     entity_identity_key,
     entity_record_id_for_identity,
     merges_project_wide,
@@ -203,3 +209,59 @@ def test_graph_rag_mode_defaults_to_on(monkeypatch):
 def test_entity_still_has_support():
     assert entity_still_has_support(["source:a", "source:b"], removed="source:a") is True
     assert entity_still_has_support(["source:a"], removed="source:a") is False
+
+
+@pytest.mark.asyncio
+async def test_upsert_entity_passes_datetime_created():
+    """SCHEMAFULL kg_entity.created is option<datetime>; strings are rejected."""
+    record_id = entity_record_id_for_identity(
+        entity_identity_key(
+            project_id="project:1",
+            entity_type="Topic",
+            normalized_key="hvac",
+            source_id="source:x",
+        )
+    )
+    upsert = AsyncMock(return_value=[])
+    saved_row = {
+        "id": record_id,
+        "type": "Topic",
+        "label": "HVAC",
+        "normalized_key": "hvac",
+        "project_id": "project:1",
+        "source_id": "source:x",
+        "metadata": {"supporting_sources": ["source:x"]},
+        "created": datetime(2026, 7, 22, 19, 25, 44),
+    }
+
+    with (
+        patch.object(
+            KnowledgeGraphRepository,
+            "_find_entities_by_identity",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
+            "construction_os.domain.knowledge_graph.repo_upsert",
+            upsert,
+        ),
+        patch(
+            "construction_os.domain.knowledge_graph.repo_query",
+            new=AsyncMock(return_value=[saved_row]),
+        ),
+        patch(
+            "construction_os.domain.base.repo_update",
+            new=AsyncMock(return_value=[saved_row]),
+        ),
+    ):
+        entity = await KnowledgeGraphRepository.upsert_entity(
+            project_id="project:1",
+            entity_type="Topic",
+            label="HVAC",
+            source_id="source:x",
+        )
+
+    upsert.assert_awaited_once()
+    payload = upsert.await_args.args[2]
+    assert isinstance(payload["created"], datetime)
+    assert not isinstance(payload["created"], str)
+    assert entity.id == record_id

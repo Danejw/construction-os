@@ -139,7 +139,8 @@ async def test_render_selected_template_uses_runtime_structured_schema(monkeypat
             return result
 
     class FakeModel:
-        def with_structured_output(self, schema):
+        def with_structured_output(self, schema, method=None, **kwargs):
+            del method, kwargs
             return FakeStructuredModel(schema)
 
         async def ainvoke(self, _messages, config=None):

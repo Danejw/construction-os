@@ -12,18 +12,20 @@ import {
   clearArtifactDragData,
 } from '@/lib/utils/artifact-drag'
 import type { ContextMode } from '@/lib/types/project-context'
+import { cn } from '@/lib/utils'
 import { SourceStageActions } from '@/components/sources/SourceStageActions'
 import { SourceCardActionMenu } from '@/components/sources/source-card/SourceCardActionMenu'
 import { SourceCardStatusBadge } from '@/components/sources/source-card/SourceCardStatusBadge'
 import { SourceCardChrome } from '@/components/sources/source-card/SourceCardChrome'
 import { useSourceCardPipeline } from '@/components/sources/source-card/useSourceCardPipeline'
 import {
-  SOURCE_TYPE_ICONS,
   type SourceCardListFields,
+  drawingProgressLabelKey,
   getSourceType,
   getSourceTypeLabel,
   topicsEqual,
 } from '@/components/sources/source-card/sourceCardStatus'
+import { getSourceDisplayIcon } from '@/lib/utils/source-icons'
 
 export interface SourceCardProps {
   source: SourceListResponse
@@ -87,9 +89,13 @@ function SourceCardImpl({
   })
 
   const sourceType = getSourceType(source)
-  const SourceTypeIcon = SOURCE_TYPE_ICONS[sourceType]
+  const { Icon: SourceTypeIcon, className: sourceIconClassName } =
+    getSourceDisplayIcon(source)
   const sourceTypeLabel = getSourceTypeLabel(sourceType, t)
   const title = source.title || t('sources.untitledSource')
+  const displayTitle = pipeline.showProgressFill
+    ? pipeline.progressLabel
+    : title
   const StatusIcon = pipeline.statusConfig.icon
   const drawingEligible = (source.asset?.file_path || '')
     .toLowerCase()
@@ -184,49 +190,55 @@ function SourceCardImpl({
         />
       ) : (
         <SourceTypeIcon
-          className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+          className={cn(
+            'h-3.5 w-3.5 shrink-0 text-muted-foreground',
+            sourceIconClassName
+          )}
           aria-label={sourceTypeLabel}
         />
       )}
 
       <h4
         className="min-w-0 flex-1 truncate text-sm font-medium leading-snug"
-        title={title}
+        title={tooltipTitle}
       >
-        {title}
+        {displayTitle}
       </h4>
 
       <div className="flex shrink-0 items-center gap-0.5">
-        {!selectionMode ? (
-          <SourceStageActions
-            embedState={pipeline.embedState}
-            kgState={pipeline.kgState}
-            drawingState={showDrawingActions ? pipeline.drawingState : undefined}
-            extractReady={pipeline.extractReady}
-            embedBusy={pipeline.embedSource.isPending}
-            kgBusy={
-              pipeline.extractKnowledge.isPending ||
-              pipeline.extractKnowledge.isBuilding
-            }
-            drawingBusy={drawingBusy || pipeline.drawingState === 'running'}
-            drawingEligible={drawingEligible}
-            embedFailure={pipeline.embedFailure}
-            kgFailure={pipeline.kgFailure}
-            failureDetailsUnavailable={pipeline.failureDetailsUnavailable}
-            onRunEmbeddings={pipeline.handleRunEmbeddings}
-            onRunKnowledgeGraph={pipeline.handleBuildKnowledgeGraph}
-            onRunDrawingExtraction={
-              showDrawingActions
-                ? () => onRunDrawingExtraction?.(source.id)
-                : undefined
-            }
-            onInspectDrawing={
-              drawingRunId && onInspectDrawing
-                ? () => onInspectDrawing(drawingRunId)
-                : undefined
-            }
-          />
-        ) : null}
+        <SourceStageActions
+          embedState={pipeline.embedState}
+          kgState={pipeline.kgState}
+          drawingState={showDrawingActions ? pipeline.drawingState : undefined}
+          extractReady={pipeline.extractReady}
+          embedBusy={pipeline.embedSource.isPending}
+          kgBusy={
+            pipeline.extractKnowledge.isPending ||
+            pipeline.extractKnowledge.isBuilding
+          }
+          drawingBusy={drawingBusy || pipeline.drawingState === 'running'}
+          drawingEligible={drawingEligible}
+          embedFailure={pipeline.embedFailure}
+          kgFailure={pipeline.kgFailure}
+          failureDetailsUnavailable={pipeline.failureDetailsUnavailable}
+          onRunEmbeddings={pipeline.handleRunEmbeddings}
+          onRunKnowledgeGraph={pipeline.handleBuildKnowledgeGraph}
+          onRunDrawingExtraction={
+            showDrawingActions
+              ? () => onRunDrawingExtraction?.(source.id)
+              : undefined
+          }
+          drawingRunningLabel={
+            showDrawingActions
+              ? t(drawingProgressLabelKey(pipeline.resolvedDrawingStatus))
+              : undefined
+          }
+          onInspectDrawing={
+            drawingRunId && onInspectDrawing
+              ? () => onInspectDrawing(drawingRunId)
+              : undefined
+          }
+        />
         <SourceCardStatusBadge
           visible={
             !pipeline.isCompleted && pipeline.pipelineStage === 'extracting'
@@ -318,6 +330,7 @@ function areEqual(prev: SourceCardProps, next: SourceCardProps): boolean {
     p.stage === n.stage &&
     p.pipeline_stage === n.pipeline_stage &&
     p.embedded === n.embedded &&
+    p.knowledge_graph === n.knowledge_graph &&
     p.kg_status === n.kg_status &&
     p.drawing_status === n.drawing_status &&
     p.processing_failures === n.processing_failures &&

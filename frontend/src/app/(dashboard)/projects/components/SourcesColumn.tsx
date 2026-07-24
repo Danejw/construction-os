@@ -121,10 +121,7 @@ export function SourcesColumn({
                     </DropdownMenu>
                   )}
                   <SourcesColumnAddMenu
-                    open={c.dropdownOpen}
-                    onOpenChange={c.setDropdownOpen}
                     onAddSource={() => c.setAddDialogOpen(true)}
-                    onAddExisting={() => c.setAddExistingDialogOpen(true)}
                   />
                   {c.collapseButton}
                 </>
@@ -174,10 +171,7 @@ export function SourcesColumn({
                   headerLeading={viewModeTabs}
                   headerTrailing={
                     <SourcesColumnAddMenu
-                      open={c.dropdownOpen}
-                      onOpenChange={c.setDropdownOpen}
                       onAddSource={() => c.setAddDialogOpen(true)}
-                      onAddExisting={() => c.setAddExistingDialogOpen(true)}
                       variant="icon"
                     />
                   }
@@ -221,8 +215,7 @@ export function SourcesColumn({
                 onEnterSelection={c.enterSelection}
                 drawingRunBySourceId={c.drawingRunBySourceId}
                 onRunDrawingExtraction={c.handleRunDrawingExtraction}
-                onInspectDrawing={c.handleInspectDrawing}
-                drawingBusy={c.extractDrawings.isPending}
+                pendingDrawingSourceIds={c.pendingDrawingSourceIds}
                 isFetchingNextPage={isFetchingNextPage}
               />
             )}
@@ -234,8 +227,6 @@ export function SourcesColumn({
         projectId={projectId}
         addDialogOpen={c.addDialogOpen}
         onAddDialogOpenChange={c.handleAddDialogOpenChange}
-        addExistingDialogOpen={c.addExistingDialogOpen}
-        onAddExistingDialogOpenChange={c.setAddExistingDialogOpen}
         deleteDialogOpen={c.deleteDialogOpen}
         onDeleteDialogOpenChange={c.setDeleteDialogOpen}
         onDeleteConfirm={c.handleDeleteConfirm}
@@ -251,10 +242,6 @@ export function SourcesColumn({
         onBulkRemoveOpenChange={c.setBulkRemoveOpen}
         onBulkRemoveConfirm={c.handleBulkRemoveConfirm}
         bulkBusy={c.bulkBusy}
-        drawingResultsOpen={c.drawingResultsOpen}
-        onDrawingResultsOpenChange={c.setDrawingResultsOpen}
-        drawingResultsRunId={c.drawingResultsRunId}
-        onRefresh={onRefresh}
       />
     </>
   )

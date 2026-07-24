@@ -5,10 +5,46 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { useGraphLiveStore } from '@/lib/stores/graph-live-store'
 import { useKnowledgeExtractStore } from '@/lib/stores/knowledge-extract-store'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
+import { patchAllSourceListQueries } from '@/lib/utils/source-query-cache'
 
 export const KNOWLEDGE_QUERY_KEYS = {
   extractors: (sourceId: string) => ['knowledge', 'extractors', sourceId] as const,
   source: (sourceId: string) => ['knowledge', 'source', sourceId] as const,
+}
+
+function patchSourceKgStatus(
+  queryClient: ReturnType<typeof useQueryClient>,
+  sourceId: string,
+  kgStatus: string
+) {
+  const knowledgeGraph = kgStatus === 'completed'
+  patchAllSourceListQueries(queryClient, (sources) =>
+    sources.map((source) =>
+      source.id === sourceId
+        ? {
+            ...source,
+            kg_status: kgStatus,
+            // Durable flag — same role as `embedded` for the list icon.
+            ...(knowledgeGraph ? { knowledge_graph: true } : {}),
+          }
+        : source
+    )
+  )
+  queryClient.setQueryData(
+    ['sources', sourceId, 'status'],
+    (prev: { knowledge_graph?: boolean | null; kg_status?: string | null } | undefined) =>
+      prev
+        ? {
+            ...prev,
+            kg_status: kgStatus,
+            ...(knowledgeGraph ? { knowledge_graph: true } : {}),
+          }
+        : prev
+  )
+  void queryClient.invalidateQueries({
+    queryKey: ['sources', sourceId, 'status'],
+  })
+  void queryClient.invalidateQueries({ queryKey: ['sources'] })
 }
 
 function invalidateSourceKnowledge(
@@ -93,6 +129,7 @@ async function watchExtractCommand(options: {
     await invalidateSourceKnowledge(queryClient, sourceId, projectId)
 
     if (status.status === 'completed') {
+      patchSourceKgStatus(queryClient, sourceId, 'completed')
       if (projectId) {
         useGraphLiveStore
           .getState()
@@ -127,6 +164,7 @@ async function watchExtractCommand(options: {
     }
 
     if (status.status === 'failed') {
+      patchSourceKgStatus(queryClient, sourceId, 'failed')
       toast.error(t('knowledge.extractRunFailed'), {
         description:
           status.error_message ||

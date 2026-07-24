@@ -47,11 +47,11 @@ export function GeneratePodcastDialog({
     projects,
     projectsLoading,
     expandedProjects,
-    setexpandedProjects,
+    setExpandedProjects,
     selections,
     sourcesByProject,
     notesByProject,
-    fetchingprojectIds,
+    fetchingProjectIds,
     tokenCount,
     charCount,
     selectedProjectSummaries,
@@ -187,11 +187,11 @@ export function GeneratePodcastDialog({
             tokenCount={tokenCount}
             charCount={charCount}
             expandedProjects={expandedProjects}
-            setexpandedProjects={setexpandedProjects}
+            setExpandedProjects={setExpandedProjects}
             selections={selections}
             sourcesByProject={sourcesByProject}
             notesByProject={notesByProject}
-            fetchingprojectIds={fetchingprojectIds}
+            fetchingProjectIds={fetchingProjectIds}
             handleProjectToggle={handleProjectToggle}
             handleSourceModeChange={handleSourceModeChange}
             handleNoteToggle={handleNoteToggle}

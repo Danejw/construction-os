@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 from construction_os.database.repository import (
@@ -439,7 +439,7 @@ class KnowledgeGraphRepository:
             "normalized_key": key,
             "project_id": ensure_record_id(project_id),
             "metadata": base_meta,
-            "created": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "created": datetime.now(timezone.utc),
         }
         if source_id is not None:
             payload["source_id"] = ensure_record_id(source_id)

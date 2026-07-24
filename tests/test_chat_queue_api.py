@@ -106,6 +106,7 @@ def _session(*, guest_key=None, **overrides):
         "title": "Session",
         "model_override": None,
         "skill_ids": [],
+        "collection_ids": [],
         "html_template_id": None,
     }
     values.update(overrides)

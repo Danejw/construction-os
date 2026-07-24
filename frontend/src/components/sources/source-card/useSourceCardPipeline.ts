@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import type { SourceListResponse } from '@/lib/types/api'
+import type { SourceListResponse, SourceStatusResponse } from '@/lib/types/api'
 import { patchAllSourceListQueries } from '@/lib/utils/source-query-cache'
 import { useSourceStatus, useEmbedSource } from '@/lib/hooks/use-sources'
 import {
@@ -32,6 +32,30 @@ export interface UseSourceCardPipelineArgs {
   drawingBusy?: boolean
 }
 
+function isKgJobActive(kgStatus: string | null | undefined): boolean {
+  return (
+    kgStatus === 'new' || kgStatus === 'queued' || kgStatus === 'running'
+  )
+}
+
+/**
+ * Durable KG completion — same idea as `embedded`: true once evidence exists.
+ * Prefer any true signal; never let a stale status `false` block a true list flag.
+ */
+function resolveLiveKnowledgeGraph(
+  statusData: SourceStatusResponse | undefined,
+  source: SourceCardListFields,
+  extractorKgStatus: string | undefined
+): boolean {
+  return (
+    statusData?.knowledge_graph === true ||
+    source.knowledge_graph === true ||
+    statusData?.kg_status === 'completed' ||
+    source.kg_status === 'completed' ||
+    extractorKgStatus === 'completed'
+  )
+}
+
 export function useSourceCardPipeline({
   source,
   projectId,
@@ -42,11 +66,23 @@ export function useSourceCardPipeline({
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [wasProcessing, setWasProcessing] = useState(false)
+  const [sawKnowledgeGraphStage, setSawKnowledgeGraphStage] = useState(false)
   const wasKnowledgeGraphRef = useRef(false)
 
   const sourceWithStatus = source as SourceCardListFields
 
   const listStage = sourceWithStatus.stage || sourceWithStatus.pipeline_stage
+  const listKgStatus = sourceWithStatus.kg_status ?? null
+  const listKnowledgeGraph = Boolean(sourceWithStatus.knowledge_graph)
+
+  // Keep fetching until durable KG lands after we observed the KG stage
+  // (embeddings already exist before that stage exits; KG can lag one poll).
+  const awaitingKgDurable =
+    sawKnowledgeGraphStage &&
+    !listKnowledgeGraph &&
+    listKgStatus !== 'failed' &&
+    listKgStatus !== 'completed'
+
   const shouldFetchStatus =
     sourceWithStatus.status === 'new' ||
     sourceWithStatus.status === 'queued' ||
@@ -54,8 +90,10 @@ export function useSourceCardPipeline({
     listStage === 'extracting' ||
     listStage === 'embedding' ||
     listStage === 'knowledge_graph' ||
+    isKgJobActive(listKgStatus) ||
     (!!sourceWithStatus.command_id && !sourceWithStatus.status) ||
-    wasProcessing
+    wasProcessing ||
+    awaitingKgDurable
 
   const { data: statusData, isLoading: statusLoading } = useSourceStatus(
     source.id,
@@ -76,6 +114,9 @@ export function useSourceCardPipeline({
       ? 'new'
       : 'completed'
 
+  const liveKgStatusFromPoll = statusData?.kg_status
+  const kgStillActive = isKgJobActive(liveKgStatusFromPoll)
+
   useEffect(() => {
     const currentStatusFromData = statusData?.status || sourceWithStatus.status
     const stage =
@@ -83,9 +124,12 @@ export function useSourceCardPipeline({
       sourceWithStatus.stage ||
       sourceWithStatus.pipeline_stage
 
-    if (stage === 'knowledge_graph' && projectId) {
+    if (stage === 'knowledge_graph') {
       wasKnowledgeGraphRef.current = true
-      useGraphLiveStore.getState().setSourceUpdating(projectId, source.id, true)
+      setSawKnowledgeGraphStage(true)
+      if (projectId) {
+        useGraphLiveStore.getState().setSourceUpdating(projectId, source.id, true)
+      }
     }
 
     if (
@@ -94,9 +138,25 @@ export function useSourceCardPipeline({
       currentStatusFromData === 'queued' ||
       stage === 'extracting' ||
       stage === 'embedding' ||
-      stage === 'knowledge_graph'
+      stage === 'knowledge_graph' ||
+      kgStillActive
     ) {
       setWasProcessing(true)
+    }
+
+    // Keep polling until durable KG matches embeddings' EXISTS check.
+    if (kgStillActive) {
+      return
+    }
+    if (
+      wasKnowledgeGraphRef.current &&
+      statusData?.knowledge_graph !== true &&
+      sourceWithStatus.knowledge_graph !== true &&
+      statusData?.kg_status !== 'completed' &&
+      sourceWithStatus.kg_status !== 'completed' &&
+      statusData?.kg_status !== 'failed'
+    ) {
+      return
     }
 
     if (
@@ -121,8 +181,15 @@ export function useSourceCardPipeline({
             .getState()
             .setSourceUpdating(projectId, source.id, false)
         }
-        wasKnowledgeGraphRef.current = false
       }
+      wasKnowledgeGraphRef.current = false
+      setSawKnowledgeGraphStage(false)
+
+      const nextKgStatus = statusData?.kg_status ?? sourceWithStatus.kg_status
+      const nextKnowledgeGraph =
+        statusData?.knowledge_graph === true ||
+        sourceWithStatus.knowledge_graph === true ||
+        nextKgStatus === 'completed'
 
       patchAllSourceListQueries(queryClient, (sources) =>
         sources.map((item) =>
@@ -136,7 +203,8 @@ export function useSourceCardPipeline({
                   typeof statusData?.embedded === 'boolean'
                     ? statusData.embedded
                     : item.embedded,
-                kg_status: statusData?.kg_status ?? item.kg_status,
+                kg_status: nextKgStatus,
+                knowledge_graph: nextKnowledgeGraph || item.knowledge_graph,
                 processing_failures:
                   statusData?.processing_failures ?? item.processing_failures,
                 failure_details_unavailable:
@@ -146,13 +214,38 @@ export function useSourceCardPipeline({
             : item
         )
       )
+
+      // Keep status cache in sync so a disabled query doesn't stick on false.
+      queryClient.setQueryData(
+        ['sources', source.id, 'status'],
+        (prev: SourceStatusResponse | undefined) =>
+          prev
+            ? {
+                ...prev,
+                status: currentStatusFromData,
+                stage: stage || prev.stage,
+                embedded:
+                  typeof statusData?.embedded === 'boolean'
+                    ? statusData.embedded
+                    : prev.embedded,
+                kg_status: nextKgStatus ?? prev.kg_status,
+                knowledge_graph:
+                  nextKnowledgeGraph || prev.knowledge_graph === true,
+              }
+            : prev
+      )
+
+      void queryClient.invalidateQueries({ queryKey: ['sources'] })
     }
   }, [
     statusData,
     sourceWithStatus.status,
     sourceWithStatus.stage,
     sourceWithStatus.pipeline_stage,
+    sourceWithStatus.kg_status,
+    sourceWithStatus.knowledge_graph,
     wasProcessing,
+    kgStillActive,
     source.id,
     projectId,
     queryClient,
@@ -219,29 +312,35 @@ export function useSourceCardPipeline({
     statusData?.failure_details_unavailable ??
     sourceWithStatus.failure_details_unavailable ??
     false
+
+  // Embeddings: durable boolean from status poll (EXISTS) or list row.
   const liveEmbedded =
     typeof statusData?.embedded === 'boolean'
       ? statusData.embedded
       : Boolean(sourceWithStatus.embedded)
+
+  // Knowledge graph: same durable-boolean idea (completed kg_extraction_run).
+  const liveKnowledgeGraph = resolveLiveKnowledgeGraph(
+    statusData,
+    sourceWithStatus,
+    extractorKgStatus
+  )
   const liveKgStatus =
     statusData?.kg_status ??
     sourceWithStatus.kg_status ??
     extractorKgStatus ??
     null
-  const hasKnowledgeGraph =
-    liveKgStatus === 'completed' || extractorKgStatus === 'completed'
-  const kgFailed = liveKgStatus === 'failed' || extractorKgStatus === 'failed'
-  const kgBuilding =
-    extractKnowledge.isBuilding ||
-    liveKgStatus === 'running' ||
-    liveKgStatus === 'queued' ||
-    liveKgStatus === 'new'
+  const kgFailed =
+    liveKgStatus === 'failed' || extractorKgStatus === 'failed'
   const showBuildKnowledgeGraph =
     isCompleted &&
     menuOpen &&
     !kgStatusLoading &&
-    !hasKnowledgeGraph &&
-    !kgBuilding
+    !liveKnowledgeGraph &&
+    !(
+      extractKnowledge.isBuilding ||
+      isKgJobActive(liveKgStatus)
+    )
 
   const extractReady =
     liveEmbedded ||
@@ -261,16 +360,18 @@ export function useSourceCardPipeline({
           ? 'done'
           : 'idle'
 
-  const kgState: StageActionState = kgBuilding
-    ? 'running'
-    : kgFailure ||
-        kgFailed ||
-        (isFailed && liveEmbedded && pipelineStage !== 'embedding')
-      ? 'failed'
-      : hasKnowledgeGraph
-        ? 'done'
-        : 'idle'
+  // Mirror embedState exactly: running in-stage / building; done from durable flag.
+  const kgState: StageActionState =
+    pipelineStage === 'knowledge_graph' || extractKnowledge.isBuilding
+      ? 'running'
+      : kgFailure || (isFailed && liveEmbedded && !liveKnowledgeGraph)
+        ? 'failed'
+        : liveKnowledgeGraph
+          ? 'done'
+          : 'idle'
 
+  const kgBuilding = kgState === 'running'
+  const hasKnowledgeGraph = liveKnowledgeGraph
   const resolvedDrawingStatus =
     drawingStatus ?? sourceWithStatus.drawing_status ?? null
   const drawingState = drawingStageState(resolvedDrawingStatus)

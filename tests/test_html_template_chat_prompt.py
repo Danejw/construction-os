@@ -19,20 +19,14 @@ def test_chat_system_prompt_includes_html_template_section():
             }
         }
     )
-    assert "HTML BID TEMPLATE" in rendered
-    assert "PRIMARY MODE" in rendered
+    assert "SELECTED HTML TEMPLATE (PARALLEL OUTPUT)" in rendered
     assert "KCDBC Bid" in rendered
     assert "estimate" in rendered
-    assert SAMPLE_HTML in rendered
-    assert "```html" in rendered
-    assert "Do **not** answer as a normal chat message" in rendered
-    assert "PDF multi-page" in rendered
-    assert "break-inside" in rendered
-    assert "@page" in rendered
-    assert "Preserve every `<img>`" in rendered
-    assert "/api/media/" in rendered
+    assert "Do not paste, rewrite, or generate the HTML document yourself" in rendered
+    assert "runtime will independently derive a strict schema" in rendered
+    assert "attach the completed HTML document" in rendered
 
 
 def test_chat_system_prompt_omits_html_template_when_absent():
     rendered = Prompter(prompt_template="chat/system").render(data={})
-    assert "HTML BID TEMPLATE" not in rendered
+    assert "SELECTED HTML TEMPLATE (PARALLEL OUTPUT)" not in rendered

@@ -1,12 +1,13 @@
 'use client'
 
 import { memo } from 'react'
-import { Link as LinkIcon, Upload, AlignLeft, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { SourceListResponse } from '@/lib/types/api'
 import { cn } from '@/lib/utils'
+import { getSourceDisplayIcon } from '@/lib/utils/source-icons'
 import type { Locale } from 'date-fns'
 
 export interface SourcesTableRowProps {
@@ -46,14 +47,8 @@ function SourcesTableRowImpl({
   measureRef,
   dataIndex,
 }: SourcesTableRowProps) {
-  const icon =
-    source.asset?.url ? (
-      <LinkIcon className="h-3.5 w-3.5" />
-    ) : source.asset?.file_path ? (
-      <Upload className="h-3.5 w-3.5" />
-    ) : (
-      <AlignLeft className="h-3.5 w-3.5" />
-    )
+  const { Icon: SourceIcon, className: sourceIconClassName } =
+    getSourceDisplayIcon(source)
 
   const typeLabel = source.asset?.url
     ? typeLinkLabel
@@ -75,7 +70,12 @@ function SourcesTableRowImpl({
     >
       <td className="h-9 px-3">
         <div className="flex items-center gap-2">
-          {icon}
+          <SourceIcon
+            className={cn(
+              'h-3.5 w-3.5 text-muted-foreground',
+              sourceIconClassName
+            )}
+          />
           <Badge variant="secondary" className="text-[11px]">
             {typeLabel}
           </Badge>
@@ -121,6 +121,8 @@ function areEqual(prev: SourcesTableRowProps, next: SourcesTableRowProps) {
     prev.source.title === next.source.title &&
     prev.source.updated === next.source.updated &&
     prev.source.embedded === next.source.embedded &&
+    prev.source.asset?.file_path === next.source.asset?.file_path &&
+    prev.source.asset?.url === next.source.asset?.url &&
     prev.isSelected === next.isSelected &&
     prev.index === next.index
   )

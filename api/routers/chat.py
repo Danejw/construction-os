@@ -14,7 +14,7 @@ from api.chat_queue_service import (
     ChatQueueNotFoundError,
     chat_queue_service,
 )
-from construction_os.ai.provision import provision_langchain_model
+from construction_os.ai.structured import invoke_structured
 from construction_os.domain.project import ChatSession, Project, Source
 from construction_os.exceptions import (
     NotFoundError,
@@ -34,10 +34,6 @@ from construction_os.utils.chat_session import (
 from construction_os.utils.graph_utils import (
     get_session_message_count,
     truncate_messages_from_id,
-)
-from construction_os.utils.text_utils import (
-    clean_thinking_content,
-    extract_text_content,
 )
 
 router = APIRouter()
@@ -248,40 +244,10 @@ class ChatSuggestionsResponse(BaseModel):
     )
 
 
-def _parse_suggestions_json(raw: str, count: int) -> List[str]:
-    """Extract a JSON string array from model output; soft-fail to []."""
-    import json
-    import re
+class ChatSuggestionsPayload(BaseModel):
+    """API structured-output schema for chat starter suggestions."""
 
-    text = (raw or "").strip()
-    if not text:
-        return []
-
-    # Prefer fenced JSON, then first [...] block
-    fenced = re.search(r"```(?:json)?\s*(\[[\s\S]*?\])\s*```", text, re.IGNORECASE)
-    candidate = fenced.group(1) if fenced else None
-    if not candidate:
-        bracket = re.search(r"\[[\s\S]*\]", text)
-        candidate = bracket.group(0) if bracket else text
-
-    try:
-        parsed = json.loads(candidate)
-    except json.JSONDecodeError:
-        logger.warning("Chat suggestions: failed to parse model JSON")
-        return []
-
-    if not isinstance(parsed, list):
-        return []
-
-    cleaned: List[str] = []
-    for item in parsed:
-        if isinstance(item, str):
-            s = item.strip()
-            if s:
-                cleaned.append(s)
-        if len(cleaned) >= count:
-            break
-    return cleaned[:count]
+    suggestions: List[str] = Field(default_factory=list)
 
 
 async def _build_suggestion_context(
@@ -743,8 +709,8 @@ async def get_chat_suggestions(request: ChatSuggestionsRequest):
             f"Using ONLY the titles/topics/metadata below (never invent documents), "
             f"propose {count} short, actionable example user messages they could send. "
             "Requirements:\n"
-            f"- Return ONLY a JSON array of {count} strings (no prose, no markdown).\n"
-            "- Each string is a complete user message, under 120 characters.\n"
+            f"- Provide exactly {count} suggestions.\n"
+            "- Each suggestion is a complete user message, under 120 characters.\n"
             "- Diversify intents: summarize, compare, find risks/issues, explain a topic, next steps.\n"
             "- Ground wording in the listed titles/topics when possible.\n"
             "- If little content exists, still return useful generic research questions for this chat."
@@ -753,17 +719,20 @@ async def get_chat_suggestions(request: ChatSuggestionsRequest):
             SystemMessage(content=system_prompt),
             HumanMessage(content=context_text),
         ]
-        # Use default chat model (cheap short call) — not artifact/prompt_graph defaults
-        model = await provision_langchain_model(
-            str(payload),
-            None,
-            "chat",
+        result = await invoke_structured(
+            payload,
+            ChatSuggestionsPayload,
+            default_type="chat",
             max_tokens=800,
         )
-        response = await model.ainvoke(payload)
-        raw_output = clean_thinking_content(extract_text_content(response.content))
-        suggestions = _parse_suggestions_json(raw_output, count)
-        return ChatSuggestionsResponse(suggestions=suggestions)
+        cleaned: List[str] = []
+        for item in result.suggestions:
+            s = item.strip()
+            if s:
+                cleaned.append(s)
+            if len(cleaned) >= count:
+                break
+        return ChatSuggestionsResponse(suggestions=cleaned[:count])
     except HTTPException:
         raise
     except NotFoundError as e:

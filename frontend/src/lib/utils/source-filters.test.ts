@@ -71,6 +71,9 @@ describe('source-filters', () => {
 
     expect(isEmbeddingComplete(pdf)).toBe(true)
     expect(isKnowledgeGraphComplete(pdf)).toBe(false)
+    expect(
+      isKnowledgeGraphComplete({ ...pdf, knowledge_graph: true })
+    ).toBe(true)
     expect(isDrawingComplete(pdf.drawing_status)).toBe(true)
 
     expect(

@@ -1,8 +1,6 @@
 'use client'
 
 import { AddSourceDialog } from '@/components/sources/AddSourceDialog'
-import { AddExistingSourceDialog } from '@/components/sources/AddExistingSourceDialog'
-import { DrawingExtractionResultsDialog } from '@/components/sources/DrawingExtractionResultsDialog'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
@@ -10,8 +8,6 @@ export interface SourcesColumnDialogsProps {
   projectId: string
   addDialogOpen: boolean
   onAddDialogOpenChange: (open: boolean) => void
-  addExistingDialogOpen: boolean
-  onAddExistingDialogOpenChange: (open: boolean) => void
   deleteDialogOpen: boolean
   onDeleteDialogOpenChange: (open: boolean) => void
   onDeleteConfirm: () => void | Promise<void>
@@ -27,18 +23,12 @@ export interface SourcesColumnDialogsProps {
   onBulkRemoveOpenChange: (open: boolean) => void
   onBulkRemoveConfirm: () => void | Promise<void>
   bulkBusy: boolean
-  drawingResultsOpen: boolean
-  onDrawingResultsOpenChange: (open: boolean) => void
-  drawingResultsRunId: string | null
-  onRefresh?: () => void
 }
 
 export function SourcesColumnDialogs({
   projectId,
   addDialogOpen,
   onAddDialogOpenChange,
-  addExistingDialogOpen,
-  onAddExistingDialogOpenChange,
   deleteDialogOpen,
   onDeleteDialogOpenChange,
   onDeleteConfirm,
@@ -54,10 +44,6 @@ export function SourcesColumnDialogs({
   onBulkRemoveOpenChange,
   onBulkRemoveConfirm,
   bulkBusy,
-  drawingResultsOpen,
-  onDrawingResultsOpenChange,
-  drawingResultsRunId,
-  onRefresh,
 }: SourcesColumnDialogsProps) {
   const { t } = useTranslation()
 
@@ -67,13 +53,6 @@ export function SourcesColumnDialogs({
         open={addDialogOpen}
         onOpenChange={onAddDialogOpenChange}
         defaultprojectId={projectId}
-      />
-
-      <AddExistingSourceDialog
-        open={addExistingDialogOpen}
-        onOpenChange={onAddExistingDialogOpenChange}
-        projectId={projectId}
-        onSuccess={onRefresh}
       />
 
       <ConfirmDialog
@@ -118,13 +97,6 @@ export function SourcesColumnDialogs({
         onConfirm={onBulkRemoveConfirm}
         isLoading={bulkBusy}
         confirmVariant="default"
-      />
-
-      <DrawingExtractionResultsDialog
-        open={drawingResultsOpen}
-        onOpenChange={onDrawingResultsOpenChange}
-        runId={drawingResultsRunId}
-        projectId={projectId}
       />
     </>
   )

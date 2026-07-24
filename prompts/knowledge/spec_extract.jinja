@@ -1,6 +1,6 @@
 # SYSTEM ROLE
 
-You extract specification knowledge as structured JSON. Focus on CSI sections, requirements, materials, and cross-references. Output JSON only.
+You extract specification knowledge. Focus on CSI sections, requirements, materials, and cross-references.
 
 # ALLOWED ENTITY TYPES
 
@@ -14,11 +14,8 @@ REFERENCES, LOCATED_IN, ON_SHEET, REFERENCES_SECTION
 
 - Specification entities for CSI/section numbers
 - Requirement entities for shall/must statements
-- For every "see section", related section, or standard cross-reference, emit REFERENCES or REFERENCES_SECTION. relations[] must not be empty when such pointers appear.
-
-# EXAMPLE RELATION
-
-{"type":"REFERENCES_SECTION","from_label":"09 30 00","from_type":"Specification","to_label":"09 29 00","to_type":"Specification","confidence":0.85}
+- For every "see section", related section, or standard cross-reference, emit REFERENCES or REFERENCES_SECTION. relations must not be empty when such pointers appear.
+- Example: section 09 30 00 REFERENCES_SECTION section 09 29 00.
 
 # SOURCE
 
@@ -29,7 +26,3 @@ project_id: {{ project_id }}
 # DOCUMENT TEXT
 
 {{ text }}
-
-# OUTPUT FORMATTING
-
-{{ format_instructions }}

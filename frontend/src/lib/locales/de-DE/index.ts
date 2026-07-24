@@ -1,6 +1,8 @@
 import { opportunitiesEn } from '../sections/opportunities'
+import { enUS } from '../en-US'
+import { fillMissingKeys } from '../fill-missing'
 
-export const deDE = {
+const deDETranslations = {
   "agentSteps": {
     "loading_skills": "Loading skills…",
     "retrieving_context": "Retrieving context…",
@@ -1406,3 +1408,5 @@ export const deDE = {
     "viewDocs": "Dokumentation anzeigen"
   }
 }
+
+export const deDE = fillMissingKeys(enUS, deDETranslations)

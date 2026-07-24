@@ -178,6 +178,35 @@ def test_parse_extraction_payload_invalid_raises():
         parse_extraction_payload("not json at all")
 
 
+@pytest.mark.asyncio
+async def test_invoke_extractor_llm_uses_structured_outputs(monkeypatch):
+    from construction_os.knowledge.extractors import parse as parse_mod
+
+    expected = ExtractionPayload(
+        entities=[ExtractedEntity(label="AHU-1", type="Topic")],
+    )
+    captured: dict = {}
+
+    async def fake_invoke(messages, schema, **kwargs):
+        captured["messages"] = messages
+        captured["schema"] = schema
+        captured["kwargs"] = kwargs
+        assert "format_instructions" not in str(messages)
+        assert "Output JSON only" not in str(messages)
+        return expected
+
+    monkeypatch.setattr(parse_mod, "invoke_structured", fake_invoke)
+    payload = await parse_mod.invoke_extractor_llm(
+        prompt_template="knowledge/generic_extract",
+        text="AHU-1 is on sheet A-101.",
+        source_id="source:1",
+        project_id="project:1",
+        chunk_count=1,
+    )
+    assert payload.entities[0].label == "AHU-1"
+    assert captured["schema"] is ExtractionPayload
+
+
 def test_split_text_windows_cap():
     text = "x" * 25000
     windows = split_text_windows(text, window_size=8000, overlap=500, max_windows=3)

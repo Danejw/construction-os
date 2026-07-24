@@ -19,7 +19,7 @@ from loguru import logger
 from pydantic import BaseModel, Field, field_validator, model_validator
 from surreal_commands import submit_command
 
-from construction_os.ai.provision import provision_langchain_model
+from construction_os.ai.structured import invoke_structured
 from construction_os.database.repository import ensure_record_id, repo_query
 from construction_os.domain.project import Note, Source
 from construction_os.utils.text_utils import extract_text_content
@@ -428,17 +428,6 @@ async def _load_evidence(evidence_ids: Sequence[str]) -> str:
     return "\n\n".join(blocks)
 
 
-def _decision_from_fallback(content: Any) -> ProjectMemoryDecision:
-    text = extract_text_content(content).strip()
-    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    candidate = fenced.group(1) if fenced else text
-    start = candidate.find("{")
-    end = candidate.rfind("}")
-    if start < 0 or end <= start:
-        raise ValueError("Project memory consolidator did not return JSON")
-    return ProjectMemoryDecision(**json.loads(candidate[start : end + 1]))
-
-
 def _normalized_fact_key(category: str, subject: str, value: str) -> tuple[str, str, str]:
     return (
         category.strip().lower(),
@@ -633,34 +622,13 @@ async def consolidate_project_memory(
         ),
     ]
 
-    model = await provision_langchain_model(
-        str(messages), model_id, "chat", max_tokens=2200
+    decision = await invoke_structured(
+        messages,
+        ProjectMemoryDecision,
+        model_id=model_id,
+        default_type="chat",
+        max_tokens=2200,
     )
-    try:
-        decision = await model.with_structured_output(
-            ProjectMemoryDecision
-        ).ainvoke(messages)
-        if not isinstance(decision, ProjectMemoryDecision):
-            decision = ProjectMemoryDecision(**decision)
-    except Exception as structured_error:
-        logger.warning(
-            "Structured project memory consolidation failed for {}: {}",
-            project_id,
-            structured_error,
-        )
-        fallback = await model.ainvoke(
-            messages
-            + [
-                HumanMessage(
-                    content=(
-                        "Return only JSON with keys action and operations. Each operation "
-                        "may contain operation, target_fact_id, category, subject, value, "
-                        "and evidence_ids. Do not include timestamps."
-                    )
-                )
-            ]
-        )
-        decision = _decision_from_fallback(fallback.content)
 
     if decision.action == "noop":
         return previous, False

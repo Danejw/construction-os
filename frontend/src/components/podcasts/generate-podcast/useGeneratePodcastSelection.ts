@@ -27,7 +27,7 @@ import {
 export function useGeneratePodcastSelection(open: boolean) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [expandedProjects, setexpandedProjects] = useState<string[]>([])
+  const [expandedProjects, setExpandedProjects] = useState<string[]>([])
   const [selections, setSelections] = useState<Record<string, ProjectSelection>>(
     {}
   )
@@ -85,7 +85,7 @@ export function useGeneratePodcastSelection(open: boolean) {
     [sourcesQueries]
   )
 
-  const fetchingprojectIds = useMemo(() => {
+  const fetchingProjectIds = useMemo(() => {
     const ids = new Set<string>()
     projects.forEach((project, index) => {
       if (sourcesQueries[index]?.isFetching) {
@@ -154,7 +154,7 @@ export function useGeneratePodcastSelection(open: boolean) {
   }, [open, projects, dataKey])
 
   const resetSelectionState = useCallback(() => {
-    setexpandedProjects([])
+    setExpandedProjects([])
     setSelections({})
     setTokenCount(0)
     setCharCount(0)
@@ -387,11 +387,11 @@ export function useGeneratePodcastSelection(open: boolean) {
     projects,
     projectsLoading: projectsQuery.isLoading,
     expandedProjects,
-    setexpandedProjects,
+    setExpandedProjects,
     selections,
     sourcesByProject,
     notesByProject,
-    fetchingprojectIds,
+    fetchingProjectIds,
     tokenCount,
     charCount,
     selectedProjectSummaries,

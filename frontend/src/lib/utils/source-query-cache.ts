@@ -192,24 +192,32 @@ export function buildOptimisticSource(
     type: 'link' | 'upload' | 'text'
     url?: string
     file_path?: string
+    file?: File
     async_processing?: boolean
   },
-  id = `optimistic-${Date.now()}`
+  id = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 ): SourceListResponse {
   const now = new Date().toISOString()
+  const fileName =
+    variables.file instanceof File ? variables.file.name : undefined
+  const uploadPath = variables.file_path ?? fileName
+
   return {
     id,
-    title: variables.title ?? null,
+    title: variables.title ?? fileName ?? null,
     asset:
       variables.type === 'link' && variables.url
         ? { url: variables.url }
-        : variables.type === 'upload' && variables.file_path
-          ? { file_path: variables.file_path }
+        : variables.type === 'upload' && uploadPath
+          ? { file_path: uploadPath }
           : null,
     embedded: false,
     embedded_chunks: 0,
+    knowledge_graph: false,
     created: now,
     updated: now,
     status: variables.async_processing ? 'queued' : undefined,
+    stage: variables.async_processing ? 'queued' : undefined,
+    pipeline_stage: variables.async_processing ? 'queued' : undefined,
   }
 }

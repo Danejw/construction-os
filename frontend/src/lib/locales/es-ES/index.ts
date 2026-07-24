@@ -1,6 +1,8 @@
 import { opportunitiesEn } from '../sections/opportunities'
+import { enUS } from '../en-US'
+import { fillMissingKeys } from '../fill-missing'
 
-export const esES = {
+const esESTranslations = {
   "agentSteps": {
     "loading_skills": "Loading skills…",
     "retrieving_context": "Retrieving context…",
@@ -1406,3 +1408,5 @@ export const esES = {
     "viewDocs": "Ver documentación"
   }
 }
+
+export const esES = fillMissingKeys(enUS, esESTranslations)

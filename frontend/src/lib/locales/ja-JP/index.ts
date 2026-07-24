@@ -1,6 +1,8 @@
 import { opportunitiesEn } from '../sections/opportunities'
+import { enUS } from '../en-US'
+import { fillMissingKeys } from '../fill-missing'
 
-export const jaJP = {
+const jaJPTranslations = {
   "agentSteps": {
     "loading_skills": "Loading skills…",
     "retrieving_context": "Retrieving context…",
@@ -1406,3 +1408,5 @@ export const jaJP = {
     "viewDocs": "ドキュメントを見る"
   }
 }
+
+export const jaJP = fillMissingKeys(enUS, jaJPTranslations)

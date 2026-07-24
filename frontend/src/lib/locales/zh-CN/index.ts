@@ -1,6 +1,8 @@
 import { opportunitiesEn } from '../sections/opportunities'
+import { enUS } from '../en-US'
+import { fillMissingKeys } from '../fill-missing'
 
-export const zhCN = {
+const zhCNTranslations = {
   "agentSteps": {
     "loading_skills": "Loading skills…",
     "retrieving_context": "Retrieving context…",
@@ -1406,3 +1408,5 @@ export const zhCN = {
     "viewDocs": "查看文档"
   }
 }
+
+export const zhCN = fillMissingKeys(enUS, zhCNTranslations)

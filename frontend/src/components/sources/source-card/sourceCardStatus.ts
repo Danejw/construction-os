@@ -3,9 +3,6 @@ import {
   CheckCircle,
   AlertTriangle,
   Network,
-  ExternalLink,
-  Upload,
-  FileText,
 } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { SourceListResponse } from '@/lib/types/api'
@@ -29,13 +26,6 @@ export const DRAWING_FILL_PERCENT: Record<string, number> = {
   validating: 78,
   publishing: 90,
 }
-
-export const SOURCE_TYPE_ICONS = {
-  link: ExternalLink,
-  upload: Upload,
-  text: FileText,
-} as const
-
 export type SourceStatus = 'new' | 'queued' | 'running' | 'completed' | 'failed'
 
 export type SourceCardListFields = SourceListResponse & {
@@ -87,7 +77,7 @@ export function getStatusConfig(t: TFunction) {
     new: {
       icon: Clock,
       color: 'text-primary',
-      label: t('sources.statusProcessing'),
+      label: t('sources.statusQueued'),
     },
     queued: {
       icon: Clock,
@@ -97,12 +87,12 @@ export function getStatusConfig(t: TFunction) {
     running: {
       icon: Clock,
       color: 'text-primary',
-      label: t('sources.statusProcessing'),
+      label: t('sources.statusExtracting'),
     },
     extracting: {
       icon: Clock,
       color: 'text-primary',
-      label: t('sources.statusProcessing'),
+      label: t('sources.statusExtracting'),
     },
     embedding: {
       icon: Clock,

@@ -1,6 +1,6 @@
 # SYSTEM ROLE
 
-You extract email/correspondence knowledge as structured JSON. Focus on people, organizations, decisions, issues, dates, and thread references. Output JSON only.
+You extract email/correspondence knowledge. Focus on people, organizations, decisions, issues, dates, and thread references.
 
 # ALLOWED ENTITY TYPES
 
@@ -16,10 +16,7 @@ REFERENCES, LOCATED_IN, ON_SHEET, REFERENCES_SECTION
 - Decision and Issue entities
 - Date entities
 - REFERENCES for thread IDs / reply chains; emit relations when thread or message IDs are cited
-
-# EXAMPLE RELATION
-
-{"type":"REFERENCES","from_label":"RE: Submittal 12","from_type":"Reference","to_label":"Submittal 12","to_type":"Reference","confidence":0.8}
+- Example: RE: Submittal 12 REFERENCES Submittal 12.
 
 # SOURCE
 
@@ -30,7 +27,3 @@ project_id: {{ project_id }}
 # DOCUMENT TEXT
 
 {{ text }}
-
-# OUTPUT FORMATTING
-
-{{ format_instructions }}

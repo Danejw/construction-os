@@ -5,6 +5,18 @@ from surreal_commands import registry
 
 import commands.embedding_commands as embedding_commands
 from construction_os.exceptions import ConfigurationError
+from construction_os.utils.chunking import TextChunk
+
+
+def _plain_chunks(*texts: str) -> list[TextChunk]:
+    """Build TextChunk fixtures matching chunk_text's return shape."""
+    chunks: list[TextChunk] = []
+    cursor = 0
+    for text in texts:
+        end = cursor + len(text)
+        chunks.append(TextChunk(content=text, char_start=cursor, char_end=end))
+        cursor = end
+    return chunks
 
 
 def test_legacy_embedding_commands_are_registered():
@@ -95,7 +107,7 @@ async def test_embed_source_runtime_error_fails_pipeline_without_raise(monkeypat
     monkeypatch.setattr(
         embedding_commands, "detect_content_type", lambda *_a, **_k: embedding_commands.ContentType.PLAIN
     )
-    monkeypatch.setattr(embedding_commands, "chunk_text", lambda *_a, **_k: ["hello world"])
+    monkeypatch.setattr(embedding_commands, "chunk_text", lambda *_a, **_k: _plain_chunks("hello world"))
     monkeypatch.setattr(
         embedding_commands,
         "generate_embeddings",
@@ -138,7 +150,7 @@ async def test_embed_source_configuration_error_fails_pipeline(monkeypatch):
     monkeypatch.setattr(
         embedding_commands, "detect_content_type", lambda *_a, **_k: embedding_commands.ContentType.PLAIN
     )
-    monkeypatch.setattr(embedding_commands, "chunk_text", lambda *_a, **_k: ["hello world"])
+    monkeypatch.setattr(embedding_commands, "chunk_text", lambda *_a, **_k: _plain_chunks("hello world"))
     monkeypatch.setattr(
         embedding_commands,
         "generate_embeddings",
@@ -169,7 +181,7 @@ async def test_embed_source_success_begins_kg(monkeypatch):
     monkeypatch.setattr(
         embedding_commands, "detect_content_type", lambda *_a, **_k: embedding_commands.ContentType.PLAIN
     )
-    monkeypatch.setattr(embedding_commands, "chunk_text", lambda *_a, **_k: ["hello world"])
+    monkeypatch.setattr(embedding_commands, "chunk_text", lambda *_a, **_k: _plain_chunks("hello world"))
     monkeypatch.setattr(
         embedding_commands,
         "generate_embeddings",

@@ -29,7 +29,6 @@ from construction_os.drawing.semantic import build_semantic_records
 from construction_os.drawing.types import BBox, DrawingItemDraft, pdf_to_norm
 from construction_os.drawing.vision import (
     MockVisionClient,
-    _parse_json_loose,
     set_vision_client_override,
 )
 
@@ -178,16 +177,6 @@ def test_file_hash_stable(tmp_path: Path):
     p = tmp_path / "a.pdf"
     p.write_bytes(b"%PDF-1.4 fake")
     assert compute_file_hash(p) == compute_file_hash(p)
-
-
-def test_invalid_model_json():
-    with pytest.raises(ValueError, match="Invalid model JSON"):
-        _parse_json_loose("not json at all")
-
-
-def test_structured_output_validation_loose():
-    parsed = _parse_json_loose('```json\n{"is_drawing": true, "confidence": 0.9}\n```')
-    assert parsed["is_drawing"] is True
 
 
 def test_normalize_dedupe_and_conflicts():

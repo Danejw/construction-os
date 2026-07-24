@@ -522,6 +522,8 @@ class SourceListResponse(BaseModel):
     stage: Optional[str] = None
     # Child-job status for per-stage UI (from FETCH'd kg_command)
     kg_status: Optional[str] = None
+    # Durable completion flag (like embedded) — true when a completed KG run exists
+    knowledge_graph: bool = False
     # Latest architectural drawing extraction run status (independent of source pipeline)
     drawing_status: Optional[str] = None
     processing_failures: Dict[str, ProcessingFailureResponse] = Field(
@@ -608,6 +610,10 @@ class SourceStatusResponse(BaseModel):
     )
     kg_status: Optional[str] = Field(
         None, description="Knowledge graph job status when linked"
+    )
+    knowledge_graph: Optional[bool] = Field(
+        None,
+        description="Whether a completed knowledge-graph extraction exists",
     )
     processing_failures: Dict[str, ProcessingFailureResponse] = Field(
         default_factory=dict

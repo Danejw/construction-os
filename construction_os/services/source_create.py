@@ -136,27 +136,23 @@ async def create_and_process_source(
                 pass
             raise
 
-    try:
-        result = await asyncio.to_thread(
-            execute_command_sync,
-            "construction_os",
-            "process_source",
-            command_input.model_dump(),
-            timeout=300,
-        )
-        if not result.is_success():
-            try:
-                await source.delete()
-            except Exception:
-                pass
-            raise RuntimeError(result.error_message or "Processing failed")
+    result = await asyncio.to_thread(
+        execute_command_sync,
+        "construction_os",
+        "process_source",
+        command_input.model_dump(),
+        timeout=300,
+    )
+    if not result.is_success():
+        try:
+            await source.delete()
+        except Exception:
+            pass
+        raise RuntimeError(result.error_message or "Processing failed")
 
-        if not source.id:
-            raise RuntimeError("Source ID is missing")
-        processed = await Source.get(source.id)
-        if not processed:
-            raise RuntimeError("Processed source not found")
-        return SourceCreateResult(source=processed, async_queued=False)
-    except Exception:
-        # Caller may clean up uploaded file; source deleted above on command failure.
-        raise
+    if not source.id:
+        raise RuntimeError("Source ID is missing")
+    processed = await Source.get(source.id)
+    if not processed:
+        raise RuntimeError("Processed source not found")
+    return SourceCreateResult(source=processed, async_queued=False)

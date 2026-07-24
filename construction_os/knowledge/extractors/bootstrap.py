@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Set
+from typing import Dict, Iterable, List, Optional, Sequence, Set
 
 from construction_os.knowledge.extractors.base import (
     ExtractedEntity,
@@ -93,7 +93,7 @@ def _add_entity(
     label: str,
     entity_type: str,
     *,
-    metadata: Optional[dict] = None,
+    metadata: Optional[Dict[str, str]] = None,
 ) -> None:
     canon = re.sub(r"\s+", " ", (label or "").strip())
     if not canon or len(canon) < 2:

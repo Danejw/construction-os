@@ -29,6 +29,8 @@ def emit_agent_progress(
     config: Optional[RunnableConfig] = None,
 ) -> None:
     """Emit a sync custom event (for sync LangGraph nodes)."""
+    if not config:
+        return
     dispatch_custom_event(
         AGENT_PROGRESS_EVENT,
         {"phase": phase, "step": step, "detail": detail or {}},
@@ -41,6 +43,8 @@ def emit_evidence_focus(
     config: Optional[RunnableConfig] = None,
 ) -> None:
     """Emit citation focus entries for PDF/text deep-links (RAG-012)."""
+    if not config:
+        return
     dispatch_custom_event(
         EVIDENCE_FOCUS_EVENT,
         {"items": items or []},
@@ -97,6 +101,8 @@ async def aemit_agent_progress(
     config: Optional[RunnableConfig] = None,
 ) -> None:
     """Emit an async custom event (for async LangGraph nodes)."""
+    if not config:
+        return
     await adispatch_custom_event(
         AGENT_PROGRESS_EVENT,
         {"phase": phase, "step": step, "detail": detail or {}},

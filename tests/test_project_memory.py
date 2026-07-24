@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -250,23 +250,18 @@ def test_delete_preserves_tombstone_for_temporal_reasoning():
 
 @pytest.mark.asyncio
 async def test_consolidation_applies_operations_and_increments_revision():
-    structured = MagicMock()
-    structured.ainvoke = AsyncMock(
-        return_value=ProjectMemoryDecision(
-            action="apply",
-            operations=[
-                ProjectMemoryOperation(
-                    operation="merge",
-                    category="deadline",
-                    subject="Bid deadline",
-                    value="August 8, 2026",
-                    evidence_ids=["source:addendum"],
-                )
-            ],
-        )
+    decision = ProjectMemoryDecision(
+        action="apply",
+        operations=[
+            ProjectMemoryOperation(
+                operation="merge",
+                category="deadline",
+                subject="Bid deadline",
+                value="August 8, 2026",
+                evidence_ids=["source:addendum"],
+            )
+        ],
     )
-    model = MagicMock()
-    model.with_structured_output.return_value = structured
 
     saved = ProjectMemorySnapshot(
         project_id="project:abc",
@@ -286,9 +281,9 @@ async def test_consolidation_applies_operations_and_increments_revision():
             return_value="Addendum evidence",
         ),
         patch(
-            "construction_os.services.project_memory.provision_langchain_model",
+            "construction_os.services.project_memory.invoke_structured",
             new_callable=AsyncMock,
-            return_value=model,
+            return_value=decision,
         ),
         patch(
             "construction_os.services.project_memory.save_project_memory",
@@ -315,10 +310,7 @@ async def test_consolidation_applies_operations_and_increments_revision():
 @pytest.mark.asyncio
 async def test_consolidation_noop_preserves_previous_memory():
     previous = _snapshot()
-    structured = MagicMock()
-    structured.ainvoke = AsyncMock(return_value=ProjectMemoryDecision(action="noop"))
-    model = MagicMock()
-    model.with_structured_output.return_value = structured
+    decision = ProjectMemoryDecision(action="noop")
 
     with (
         patch(
@@ -332,9 +324,9 @@ async def test_consolidation_noop_preserves_previous_memory():
             return_value="",
         ),
         patch(
-            "construction_os.services.project_memory.provision_langchain_model",
+            "construction_os.services.project_memory.invoke_structured",
             new_callable=AsyncMock,
-            return_value=model,
+            return_value=decision,
         ),
         patch(
             "construction_os.services.project_memory.save_project_memory",

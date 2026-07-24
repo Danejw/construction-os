@@ -128,6 +128,14 @@ async def enrich_source_list_row(row: dict[str, Any]) -> dict[str, Any]:
     if isinstance(latest_drawing, dict) and latest_drawing.get("status") is not None:
         drawing_status = str(latest_drawing["status"])
 
+    latest_kg = row.get("latest_kg_run")
+    knowledge_graph = (
+        isinstance(latest_kg, dict) and str(latest_kg.get("status") or "") == "completed"
+    )
+    # Prefer durable run completion over command status (mirrors embedded boolean).
+    if knowledge_graph:
+        kg_status = "completed"
+
     asset = row.get("asset")
     return {
         "id": row["id"],
@@ -143,6 +151,7 @@ async def enrich_source_list_row(row: dict[str, Any]) -> dict[str, Any]:
         "pipeline_stage": pipeline_stage if stage != "failed" else stage,
         "stage": stage,
         "kg_status": kg_status,
+        "knowledge_graph": knowledge_graph,
         "drawing_status": drawing_status,
         "processing_failures": processing_failures,
         "failure_details_unavailable": failure_details_unavailable,
