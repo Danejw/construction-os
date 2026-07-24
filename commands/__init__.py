@@ -1,5 +1,6 @@
 """Surreal-commands integration for Construction OS"""
 
+from .artifact_review_commands import review_artifact_command
 from .chat_queue_commands import drain_chat_queue_command
 from .drawing_commands import extract_architectural_drawings_command
 from .embedding_commands import (
@@ -16,6 +17,8 @@ from .source_commands import (
 )
 
 __all__ = [
+    # Artifact factual review
+    "review_artifact_command",
     # Persistent chat queue
     "drain_chat_queue_command",
     # Drawing extraction
