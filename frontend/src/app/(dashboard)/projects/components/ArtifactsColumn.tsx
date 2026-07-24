@@ -1,7 +1,12 @@
 'use client'
 
 import { useState, useMemo, useRef, useCallback } from 'react'
-import { ProjectArtifactResponse } from '@/lib/types/api'
+import { useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
+import {
+  ArtifactReviewRunResponse,
+  ProjectArtifactResponse,
+} from '@/lib/types/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { FileText } from 'lucide-react'
 import { ArtifactsColumnDialogs } from '@/app/(dashboard)/projects/components/artifacts-column/ArtifactsColumnDialogs'
@@ -13,6 +18,11 @@ import {
   useProjectArtifact,
   useUpdateProjectArtifact,
 } from '@/lib/hooks/use-project-artifacts'
+import {
+  useApplyArtifactReviewFixes,
+  useArtifactReview,
+  useStartArtifactReview,
+} from '@/lib/hooks/use-artifact-review'
 import { useArtifacts } from '@/lib/hooks/use-artifacts'
 import { useIngestAsSource } from '@/lib/hooks/use-sources'
 import { useListSelection } from '@/lib/hooks/useListSelection'
@@ -28,6 +38,7 @@ import { UnreadDot } from '@/components/ui/unread-dot'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { downloadArtifactMarkdown, normalizeArtifactId } from '@/lib/utils/export-artifact'
 import { projectArtifactsApi } from '@/lib/api/project-artifacts'
+import { QUERY_KEYS } from '@/lib/api/query-client'
 import { isGeneratedArtifact } from '@/lib/utils/project-artifact-kind'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
 
@@ -40,6 +51,19 @@ interface ArtifactsColumnProps {
   onTemplateClick?: (artifactId: string) => void
 }
 
+async function fetchLatestReviewOrNull(
+  noteId: string
+): Promise<ArtifactReviewRunResponse | null> {
+  try {
+    return await projectArtifactsApi.getLatestReview(noteId)
+  } catch (error: unknown) {
+    if (isAxiosError(error) && error.response?.status === 404) {
+      return null
+    }
+    throw error
+  }
+}
+
 export function ArtifactsColumn({
   notes,
   isLoading,
@@ -49,6 +73,7 @@ export function ArtifactsColumn({
   onTemplateClick,
 }: ArtifactsColumnProps) {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
   const { data: templates = [], isLoading: templatesLoading } = useArtifacts()
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [editingNote, setEditingNote] = useState<ProjectArtifactResponse | null>(null)
@@ -60,6 +85,8 @@ export function ArtifactsColumn({
   const [draggingNoteId, setDraggingNoteId] = useState<string | null>(null)
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [findingsNote, setFindingsNote] = useState<ProjectArtifactResponse | null>(null)
+  const [ingestWarnNote, setIngestWarnNote] = useState<ProjectArtifactResponse | null>(null)
   const suppressClickRef = useRef(false)
 
   const {
@@ -91,6 +118,8 @@ export function ArtifactsColumn({
   const updateNote = useUpdateProjectArtifact()
   const exportNotePdf = useExportProjectArtifactPdf()
   const ingestAsSource = useIngestAsSource()
+  const startReview = useStartArtifactReview()
+  const applyReviewFixes = useApplyArtifactReviewFixes()
   const { toast } = useToast()
 
   const viewingNoteId = viewingArtifact?.id
@@ -103,6 +132,11 @@ export function ArtifactsColumn({
     })
 
   const displayViewingNote = fetchedViewingNote ?? viewingArtifact
+
+  const findingsNoteId = findingsNote?.id
+  const { data: findingsRun = null } = useArtifactReview(findingsNoteId, {
+    enabled: Boolean(findingsNoteId),
+  })
 
   const { artifactsCollapsed, toggleArtifacts } = useProjectColumnsStore()
   const unseenArtifactIds = useProjectActivityStore(
@@ -162,13 +196,91 @@ export function ArtifactsColumn({
     }
   }
 
-  const handleIngestNote = async (note: ProjectArtifactResponse) => {
-    if (!isGeneratedArtifact(note)) return
+  const doIngestNote = async (note: ProjectArtifactResponse) => {
     await ingestAsSource.mutateAsync({
       kind: 'note',
       noteId: note.id,
       projectId,
     })
+  }
+
+  const handleIngestNote = async (note: ProjectArtifactResponse) => {
+    if (!isGeneratedArtifact(note)) return
+
+    let review = queryClient.getQueryData<ArtifactReviewRunResponse | null>(
+      QUERY_KEYS.artifactReview(note.id)
+    )
+
+    if (review === undefined) {
+      try {
+        review = await fetchLatestReviewOrNull(note.id)
+        queryClient.setQueryData(QUERY_KEYS.artifactReview(note.id), review)
+      } catch (error) {
+        console.error('Failed to load artifact review for ingest warn:', error)
+        review = null
+      }
+    }
+
+    if (review && !review.stale && review.status === 'needs_review') {
+      setIngestWarnNote(note)
+      return
+    }
+
+    await doIngestNote(note)
+  }
+
+  const handleIngestWarnConfirm = async () => {
+    if (!ingestWarnNote) return
+    const note = ingestWarnNote
+    setIngestWarnNote(null)
+    await doIngestNote(note)
+  }
+
+  const handleReviewFacts = async (note: ProjectArtifactResponse) => {
+    try {
+      await startReview.mutateAsync(note.id)
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: getApiErrorKey(error, t('common.error')),
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleOpenReviewFindings = (note: ProjectArtifactResponse) => {
+    setFindingsNote(note)
+  }
+
+  const handleApplyReviewFixes = async (findingIds: string[]) => {
+    if (!findingsNote || !findingsRun) return
+    if (findingIds.length === 0) {
+      toast({
+        title: t('common.error'),
+        description: t('projects.reviewNoFixes'),
+        variant: 'destructive',
+      })
+      return
+    }
+    try {
+      await applyReviewFixes.mutateAsync({
+        noteId: findingsNote.id,
+        data: {
+          run_id: findingsRun.id,
+          finding_ids: findingIds,
+        },
+      })
+      toast({
+        title: t('common.success'),
+        description: t('projects.artifactUpdatedSuccess'),
+      })
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: getApiErrorKey(error, t('projects.failedToUpdateArtifact')),
+        variant: 'destructive',
+      })
+    }
   }
 
   const handleExportPdf = async (note: ProjectArtifactResponse) => {
@@ -228,6 +340,11 @@ export function ArtifactsColumn({
     }
   }
 
+  const reviewPendingNoteId =
+    startReview.isPending && typeof startReview.variables === 'string'
+      ? startReview.variables
+      : null
+
   return (
     <>
       <CollapsibleColumn
@@ -272,6 +389,9 @@ export function ArtifactsColumn({
               onIngest={handleIngestNote}
               onExportPdf={handleExportPdf}
               onExportMarkdown={handleExportMarkdown}
+              onReviewFacts={handleReviewFacts}
+              onOpenReviewFindings={handleOpenReviewFindings}
+              reviewPendingNoteId={reviewPendingNoteId}
               exportPdfPending={exportNotePdf.isPending}
               ingestPending={ingestAsSource.isPending}
               draggingNoteId={draggingNoteId}
@@ -302,14 +422,22 @@ export function ArtifactsColumn({
         setDeleteDialogOpen={setDeleteDialogOpen}
         bulkDeleteOpen={bulkDeleteOpen}
         setBulkDeleteOpen={setBulkDeleteOpen}
+        findingsNote={findingsNote}
+        setFindingsNote={setFindingsNote}
+        findingsRun={findingsRun}
+        ingestWarnNote={ingestWarnNote}
+        setIngestWarnNote={setIngestWarnNote}
         updatePending={updateNote.isPending}
         deletePending={deleteNote.isPending}
         bulkBusy={bulkBusy}
         exportPdfPending={exportNotePdf.isPending}
         ingestPending={ingestAsSource.isPending}
+        applyReviewPending={applyReviewFixes.isPending}
         onExportPdf={handleExportPdf}
         onExportMarkdown={handleExportMarkdown}
         onIngest={handleIngestNote}
+        onIngestWarnConfirm={handleIngestWarnConfirm}
+        onApplyReviewFixes={handleApplyReviewFixes}
         onRenameConfirm={handleRenameConfirm}
         onDeleteConfirm={handleDeleteConfirm}
         onBulkDeleteConfirm={handleBulkDeleteConfirm}

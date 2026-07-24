@@ -1,8 +1,12 @@
 'use client'
 
 import { type MutableRefObject } from 'react'
-import { ProjectArtifactResponse } from '@/lib/types/api'
+import {
+  ArtifactReviewStatus,
+  ProjectArtifactResponse,
+} from '@/lib/types/api'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,11 +17,23 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Bot, User, MoreVertical, Trash2, FileText, Database, Pencil, Download } from 'lucide-react'
+import {
+  Bot,
+  User,
+  MoreVertical,
+  Trash2,
+  FileText,
+  Database,
+  Pencil,
+  Download,
+  ShieldCheck,
+  Loader2,
+} from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ContextToggle } from '@/components/common/ContextToggle'
 import type { NoteContextMode } from '@/lib/types/project-context'
 import { useSelectableRow } from '@/lib/hooks/useSelectableRow'
+import { useArtifactReview } from '@/lib/hooks/use-artifact-review'
 import { cn } from '@/lib/utils'
 import { listActionTriggerClassName } from '@/lib/utils/list-action-trigger'
 import { setArtifactDragData, clearArtifactDragData } from '@/lib/utils/artifact-drag'
@@ -45,6 +61,44 @@ function getArtifactTypeInfo(
   return { icon: User, label: t('common.human') }
 }
 
+export type ArtifactListRowReviewStatus =
+  | ArtifactReviewStatus
+  | 'stale'
+  | null
+
+function resolveReviewStatus(
+  status: ArtifactReviewStatus | undefined,
+  stale: boolean | undefined
+): ArtifactListRowReviewStatus {
+  if (!status) return null
+  if (status === 'pending' || status === 'running') return status
+  if (stale) return 'stale'
+  return status
+}
+
+function reviewStatusLabel(
+  status: NonNullable<ArtifactListRowReviewStatus>,
+  t: TFunction
+): string {
+  switch (status) {
+    case 'pending':
+    case 'running':
+      return t('projects.reviewFactsRunning')
+    case 'passed':
+      return t('projects.reviewStatusPassed')
+    case 'needs_review':
+      return t('projects.reviewStatusNeedsReview')
+    case 'failed':
+      return t('projects.reviewStatusFailed')
+    case 'stale':
+      return t('projects.reviewStatusStale')
+    default: {
+      const _exhaustive: never = status
+      return _exhaustive
+    }
+  }
+}
+
 export interface ArtifactListRowProps {
   note: ProjectArtifactResponse
   t: TFunction
@@ -67,6 +121,11 @@ export interface ArtifactListRowProps {
   suppressClickRef: MutableRefObject<boolean>
   /** Show a primary unread indicator next to the title. */
   isUnseen?: boolean
+  onReviewFacts?: () => void
+  reviewPending?: boolean
+  /** Override status from parent; when omitted, derived from useArtifactReview. */
+  reviewStatus?: ArtifactListRowReviewStatus
+  onOpenReviewFindings?: () => void
 }
 
 export function ArtifactListRow({
@@ -90,11 +149,22 @@ export function ArtifactListRow({
   setDraggingNoteId,
   suppressClickRef,
   isUnseen = false,
+  onReviewFacts,
+  reviewPending = false,
+  reviewStatus: reviewStatusProp,
+  onOpenReviewFindings,
 }: ArtifactListRowProps) {
   const { icon: NoteTypeIcon, label: noteTypeLabel } = getArtifactTypeInfo(note, t)
   const title = note.title || t('sources.untitledNote')
   const isIngestibleArtifact = isGeneratedArtifact(note)
   const isDraggingNote = draggingNoteId === note.id
+
+  const { data: review } = useArtifactReview(note.id)
+  const derivedStatus = resolveReviewStatus(review?.status, review?.stale)
+  const reviewStatus =
+    reviewStatusProp !== undefined ? reviewStatusProp : derivedStatus
+  const isReviewRunning =
+    reviewStatus === 'pending' || reviewStatus === 'running'
 
   const { rowProps, selectedClassName } = useSelectableRow({
     selectionMode,
@@ -177,6 +247,37 @@ export function ArtifactListRow({
       >
         <span className="truncate">{title}</span>
         {isUnseen ? <UnreadDot className="shrink-0" /> : null}
+        {reviewStatus ? (
+          isReviewRunning ? (
+            <Loader2
+              className="h-3 w-3 shrink-0 animate-spin text-muted-foreground"
+              aria-label={t('projects.reviewFactsRunning')}
+            />
+          ) : (
+            <button
+              type="button"
+              className="shrink-0 rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenReviewFindings?.()
+              }}
+              aria-label={reviewStatusLabel(reviewStatus, t)}
+            >
+              <Badge
+                variant="outline"
+                className={cn(
+                  'max-w-[7.5rem] truncate text-[10px] font-normal text-muted-foreground',
+                  reviewStatus === 'needs_review' &&
+                    'border-amber-500/40 text-amber-700 dark:text-amber-400',
+                  reviewStatus === 'failed' &&
+                    'border-destructive/40 text-destructive'
+                )}
+              >
+                {reviewStatusLabel(reviewStatus, t)}
+              </Badge>
+            </button>
+          )
+        ) : null}
       </h4>
 
       {!selectionMode && (
@@ -246,6 +347,16 @@ export function ArtifactListRow({
                   </DropdownMenuItem>
                 </>
               ) : null}
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onReviewFacts?.()
+                }}
+                disabled={reviewPending || !onReviewFacts}
+              >
+                <ShieldCheck className="h-4 w-4 mr-2" />
+                {t('projects.reviewFacts')}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation()

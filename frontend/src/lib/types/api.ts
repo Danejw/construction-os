@@ -29,13 +29,52 @@ export type ArtifactReviewStatus =
   | 'needs_review'
   | 'failed'
 
+export type ArtifactReviewSourceVerdict =
+  | 'supported'
+  | 'unsupported'
+  | 'contradicted'
+  | 'not_in_corpus'
+  | 'opinion'
+
+export type ArtifactReviewMemoryVerdict =
+  | 'memory_aligned'
+  | 'memory_conflict'
+  | 'memory_novel'
+
+export interface ArtifactReviewClaimFinding {
+  finding_id: string
+  claim_text: string
+  source_verdict: ArtifactReviewSourceVerdict
+  confidence?: number
+  evidence_ids?: string[]
+  rationale?: string
+  suggested_fix?: string | null
+  claim_span?: string | null
+}
+
+export interface ArtifactReviewMemoryFinding {
+  finding_id: string
+  claim_text?: string | null
+  memory_verdict: ArtifactReviewMemoryVerdict
+  fact_id?: string | null
+  rationale?: string
+  suggested_fix?: string | null
+}
+
+export interface ArtifactReviewFindingsReport {
+  claims: ArtifactReviewClaimFinding[]
+  memory_findings: ArtifactReviewMemoryFinding[]
+  truncated?: boolean
+  notes?: string | null
+}
+
 export interface ArtifactReviewRunResponse {
   id: string
   note_id: string
   project_id: string
   status: ArtifactReviewStatus
   command_id?: string | null
-  findings?: Record<string, unknown> | null
+  findings?: Record<string, unknown> | ArtifactReviewFindingsReport | null
   summary?: Record<string, unknown> | null
   content_hash: string
   error_message?: string | null

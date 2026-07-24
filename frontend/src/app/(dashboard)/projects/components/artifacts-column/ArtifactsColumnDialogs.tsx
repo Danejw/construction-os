@@ -4,8 +4,12 @@ import type { TFunction } from 'i18next'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { RenameFieldDialog } from '@/components/common/RenameFieldDialog'
 import { ArtifactViewerDialog } from '@/app/(dashboard)/projects/components/ArtifactViewerDialog'
+import { ArtifactReviewFindingsDialog } from '@/app/(dashboard)/projects/components/ArtifactReviewFindingsDialog'
 import { ProjectNoteEditorDialog } from '@/app/(dashboard)/projects/components/ProjectNoteEditorDialog'
-import type { ProjectArtifactResponse } from '@/lib/types/api'
+import type {
+  ArtifactReviewRunResponse,
+  ProjectArtifactResponse,
+} from '@/lib/types/api'
 
 export interface ArtifactsColumnDialogsProps {
   t: TFunction
@@ -26,14 +30,22 @@ export interface ArtifactsColumnDialogsProps {
   setDeleteDialogOpen: (open: boolean) => void
   bulkDeleteOpen: boolean
   setBulkDeleteOpen: (open: boolean) => void
+  findingsNote: ProjectArtifactResponse | null
+  setFindingsNote: (note: ProjectArtifactResponse | null) => void
+  findingsRun: ArtifactReviewRunResponse | null
+  ingestWarnNote: ProjectArtifactResponse | null
+  setIngestWarnNote: (note: ProjectArtifactResponse | null) => void
   updatePending: boolean
   deletePending: boolean
   bulkBusy: boolean
   exportPdfPending: boolean
   ingestPending: boolean
+  applyReviewPending: boolean
   onExportPdf: (note: ProjectArtifactResponse) => void | Promise<void>
   onExportMarkdown: (note: ProjectArtifactResponse) => void | Promise<void>
   onIngest: (note: ProjectArtifactResponse) => void | Promise<void>
+  onIngestWarnConfirm: () => void | Promise<void>
+  onApplyReviewFixes: (findingIds: string[]) => void | Promise<void>
   onRenameConfirm: () => void | Promise<void>
   onDeleteConfirm: () => void | Promise<void>
   onBulkDeleteConfirm: () => void | Promise<void>
@@ -58,14 +70,22 @@ export function ArtifactsColumnDialogs({
   setDeleteDialogOpen,
   bulkDeleteOpen,
   setBulkDeleteOpen,
+  findingsNote,
+  setFindingsNote,
+  findingsRun,
+  ingestWarnNote,
+  setIngestWarnNote,
   updatePending,
   deletePending,
   bulkBusy,
   exportPdfPending,
   ingestPending,
+  applyReviewPending,
   onExportPdf,
   onExportMarkdown,
   onIngest,
+  onIngestWarnConfirm,
+  onApplyReviewFixes,
   onRenameConfirm,
   onDeleteConfirm,
   onBulkDeleteConfirm,
@@ -101,6 +121,18 @@ export function ArtifactsColumnDialogs({
         }}
         exportPdfPending={exportPdfPending}
         ingestPending={ingestPending}
+      />
+
+      <ArtifactReviewFindingsDialog
+        open={Boolean(findingsNote)}
+        onOpenChange={(open) => {
+          if (!open) setFindingsNote(null)
+        }}
+        note={findingsNote}
+        run={findingsRun}
+        onApply={onApplyReviewFixes}
+        applyPending={applyReviewPending}
+        t={t}
       />
 
       <RenameFieldDialog
@@ -150,6 +182,18 @@ export function ArtifactsColumnDialogs({
         onConfirm={() => void onBulkDeleteConfirm()}
         isLoading={bulkBusy}
         confirmVariant="destructive"
+      />
+
+      <ConfirmDialog
+        open={Boolean(ingestWarnNote)}
+        onOpenChange={(open) => {
+          if (!open) setIngestWarnNote(null)
+        }}
+        title={t('projects.reviewIngestWarnTitle')}
+        description={t('projects.reviewIngestWarnBody')}
+        confirmText={t('projects.reviewIngestWarnConfirm')}
+        onConfirm={() => void onIngestWarnConfirm()}
+        isLoading={ingestPending}
       />
     </>
   )

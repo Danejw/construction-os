@@ -46,6 +46,9 @@ export interface ArtifactsColumnListBodyProps {
   onIngest: (note: ProjectArtifactResponse) => void | Promise<void>
   onExportPdf: (note: ProjectArtifactResponse) => void | Promise<void>
   onExportMarkdown: (note: ProjectArtifactResponse) => void | Promise<void>
+  onReviewFacts: (note: ProjectArtifactResponse) => void | Promise<void>
+  onOpenReviewFindings: (note: ProjectArtifactResponse) => void
+  reviewPendingNoteId: string | null
   exportPdfPending: boolean
   ingestPending: boolean
   draggingNoteId: string | null
@@ -173,6 +176,9 @@ export function ArtifactsColumnListBody(props: ArtifactsColumnListBodyProps) {
                 onIngest={() => void props.onIngest(note)}
                 onExportPdf={() => void props.onExportPdf(note)}
                 onExportMarkdown={() => void props.onExportMarkdown(note)}
+                onReviewFacts={() => void props.onReviewFacts(note)}
+                reviewPending={props.reviewPendingNoteId === note.id}
+                onOpenReviewFindings={() => props.onOpenReviewFindings(note)}
                 exportPdfPending={props.exportPdfPending}
                 ingestPending={props.ingestPending}
                 draggingNoteId={props.draggingNoteId}
