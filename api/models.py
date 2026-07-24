@@ -292,6 +292,37 @@ class ProjectArtifactResponse(BaseModel):
     command_id: Optional[str] = None
 
 
+class ArtifactReviewStartResponse(BaseModel):
+    run_id: str
+    command_id: str
+    status: str
+
+
+class ArtifactReviewRunResponse(BaseModel):
+    id: str
+    note_id: str
+    project_id: str
+    status: str
+    command_id: Optional[str] = None
+    findings: Optional[Dict[str, Any]] = None
+    summary: Optional[Dict[str, Any]] = None
+    content_hash: str
+    error_message: Optional[str] = None
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    stale: bool = False
+
+
+class ArtifactReviewApplyRequest(BaseModel):
+    run_id: str
+    finding_ids: List[str]
+
+
+class ArtifactReviewApplyResponse(BaseModel):
+    artifact: ProjectArtifactResponse
+    skipped_spans: List[str]
+
+
 # Legacy aliases
 class NoteCreate(ProjectArtifactCreate):
     note_type: Optional[str] = Field(

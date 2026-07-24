@@ -7,12 +7,18 @@ from fastapi.responses import Response
 from loguru import logger
 
 from api.models import (
+    ArtifactReviewApplyRequest,
+    ArtifactReviewApplyResponse,
+    ArtifactReviewRunResponse,
+    ArtifactReviewStartResponse,
     ProjectArtifactCreate,
     ProjectArtifactResponse,
     ProjectArtifactUpdate,
     PromoteToSourceRequest,
     SourceResponse,
 )
+from construction_os.database.repository import ensure_record_id
+from construction_os.domain.artifact_review import ArtifactReviewRun, get_latest_run
 from construction_os.domain.project import Project
 from construction_os.domain.project_artifact import (
     PDF_EXPORT_KINDS,
@@ -20,6 +26,11 @@ from construction_os.domain.project_artifact import (
     resolve_kind_from_payload,
 )
 from construction_os.exceptions import InvalidInputError, NotFoundError
+from construction_os.services.artifact_review import (
+    apply_review_fixes,
+    is_run_stale,
+    start_artifact_review,
+)
 from construction_os.services.project_artifacts import (
     create_project_artifact,
     project_artifact_to_dict,
@@ -42,6 +53,25 @@ def _to_response(
         created=data["created"] or "",
         updated=data["updated"] or "",
         command_id=data.get("command_id"),
+    )
+
+
+def _review_to_response(
+    run: ArtifactReviewRun, content: str
+) -> ArtifactReviewRunResponse:
+    return ArtifactReviewRunResponse(
+        id=str(run.id),
+        note_id=str(run.note_id),
+        project_id=str(run.project_id),
+        status=run.status,
+        command_id=str(run.command_id) if run.command_id is not None else None,
+        findings=run.findings,
+        summary=run.summary,
+        content_hash=run.content_hash,
+        error_message=run.error_message,
+        started_at=str(run.started_at) if run.started_at is not None else None,
+        finished_at=str(run.finished_at) if run.finished_at is not None else None,
+        stale=is_run_stale(run, content),
     )
 
 
@@ -217,6 +247,116 @@ async def export_project_artifact_pdf(artifact_id: str):
         logger.error(f"Error exporting project artifact {artifact_id} as PDF: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Error exporting artifact as PDF: {str(e)}"
+        )
+
+
+@router.post(
+    "/project-artifacts/{note_id}/review",
+    response_model=ArtifactReviewStartResponse,
+)
+async def start_project_artifact_review(note_id: str):
+    """Start an async factual review for a project artifact."""
+    try:
+        run, command_id = await start_artifact_review(note_id)
+        return ArtifactReviewStartResponse(
+            run_id=str(run.id),
+            command_id=command_id,
+            status=run.status,
+        )
+    except HTTPException:
+        raise
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    except InvalidInputError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error starting artifact review for {note_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error starting artifact review: {str(e)}"
+        )
+
+
+@router.get(
+    "/project-artifacts/{note_id}/review",
+    response_model=ArtifactReviewRunResponse,
+)
+async def get_latest_project_artifact_review(note_id: str):
+    """Get the latest factual review run for a project artifact."""
+    try:
+        artifact = await ProjectArtifact.get(note_id)
+        run = await get_latest_run(note_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="No review run found")
+        return _review_to_response(run, artifact.content or "")
+    except HTTPException:
+        raise
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    except Exception as e:
+        logger.error(f"Error fetching latest artifact review for {note_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching artifact review: {str(e)}"
+        )
+
+
+@router.get(
+    "/project-artifacts/{note_id}/review/{run_id}",
+    response_model=ArtifactReviewRunResponse,
+)
+async def get_project_artifact_review(note_id: str, run_id: str):
+    """Get a specific factual review run for a project artifact."""
+    try:
+        artifact = await ProjectArtifact.get(note_id)
+        try:
+            run = await ArtifactReviewRun.get(run_id)
+        except NotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Review run not found") from exc
+        if str(ensure_record_id(run.note_id)) != str(ensure_record_id(note_id)):
+            raise HTTPException(status_code=404, detail="Review run not found")
+        return _review_to_response(run, artifact.content or "")
+    except HTTPException:
+        raise
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    except Exception as e:
+        logger.error(
+            f"Error fetching artifact review {run_id} for {note_id}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Error fetching artifact review: {str(e)}"
+        )
+
+
+@router.post(
+    "/project-artifacts/{note_id}/review/apply",
+    response_model=ArtifactReviewApplyResponse,
+)
+async def apply_project_artifact_review_fixes(
+    note_id: str, payload: ArtifactReviewApplyRequest
+):
+    """Apply suggested fixes from a review run to the artifact content."""
+    try:
+        artifact, skipped = await apply_review_fixes(
+            note_id=note_id,
+            run_id=payload.run_id,
+            finding_ids=payload.finding_ids,
+        )
+        return ArtifactReviewApplyResponse(
+            artifact=_to_response(artifact),
+            skipped_spans=skipped,
+        )
+    except HTTPException:
+        raise
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidInputError as e:
+        if "stale" in str(e).lower():
+            raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error applying artifact review fixes for {note_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error applying artifact review fixes: {str(e)}"
         )
 
 
