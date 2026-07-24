@@ -1,5 +1,9 @@
 import apiClient from './client'
 import {
+  ArtifactReviewApplyRequest,
+  ArtifactReviewApplyResponse,
+  ArtifactReviewRunResponse,
+  ArtifactReviewStartResponse,
   ProjectArtifactResponse,
   CreateProjectArtifactRequest,
   UpdateProjectArtifactRequest,
@@ -62,5 +66,34 @@ export const projectArtifactsApi = {
 
     triggerBlobDownload(response.data, filename)
     return { filename }
+  },
+
+  startReview: async (id: string) => {
+    const response = await apiClient.post<ArtifactReviewStartResponse>(
+      `/project-artifacts/${normalizeArtifactId(id)}/review`
+    )
+    return response.data
+  },
+
+  getLatestReview: async (id: string) => {
+    const response = await apiClient.get<ArtifactReviewRunResponse>(
+      `/project-artifacts/${normalizeArtifactId(id)}/review`
+    )
+    return response.data
+  },
+
+  getReview: async (id: string, runId: string) => {
+    const response = await apiClient.get<ArtifactReviewRunResponse>(
+      `/project-artifacts/${normalizeArtifactId(id)}/review/${runId}`
+    )
+    return response.data
+  },
+
+  applyReviewFixes: async (id: string, data: ArtifactReviewApplyRequest) => {
+    const response = await apiClient.post<ArtifactReviewApplyResponse>(
+      `/project-artifacts/${normalizeArtifactId(id)}/review/apply`,
+      data
+    )
+    return response.data
   },
 }

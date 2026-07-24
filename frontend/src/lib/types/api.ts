@@ -22,6 +22,44 @@ export interface ProjectArtifactResponse {
 /** @deprecated Use ProjectArtifactResponse */
 export type NoteResponse = ProjectArtifactResponse
 
+export type ArtifactReviewStatus =
+  | 'pending'
+  | 'running'
+  | 'passed'
+  | 'needs_review'
+  | 'failed'
+
+export interface ArtifactReviewRunResponse {
+  id: string
+  note_id: string
+  project_id: string
+  status: ArtifactReviewStatus
+  command_id?: string | null
+  findings?: Record<string, unknown> | null
+  summary?: Record<string, unknown> | null
+  content_hash: string
+  error_message?: string | null
+  started_at?: string | null
+  finished_at?: string | null
+  stale: boolean
+}
+
+export interface ArtifactReviewStartResponse {
+  run_id: string
+  command_id: string
+  status: string
+}
+
+export interface ArtifactReviewApplyRequest {
+  run_id: string
+  finding_ids: string[]
+}
+
+export interface ArtifactReviewApplyResponse {
+  artifact: ProjectArtifactResponse
+  skipped_spans: string[]
+}
+
 export interface SourceProcessingFailure {
   stage: 'embedding' | 'knowledge_graph'
   message: string
