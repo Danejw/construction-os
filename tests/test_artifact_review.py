@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from construction_os.domain.artifact_review import ArtifactReviewRun
+from construction_os.exceptions import InvalidInputError, NotFoundError
 from construction_os.retrieval.types import EvidenceBundle, EvidenceItem
 from construction_os.services.artifact_review import (
     ClaimFinding,
@@ -14,8 +15,10 @@ from construction_os.services.artifact_review import (
     MemoryFinding,
     ReviewReport,
     SegmentResult,
+    _merge_reports,
     aggregate_review_status,
     apply_claim_spans,
+    apply_review_fixes,
     content_hash,
     exclude_self_evidence,
     is_run_stale,
@@ -98,14 +101,24 @@ def test_is_run_stale():
 
 
 class _FakeRun:
-    def __init__(self, run_id: str) -> None:
+    def __init__(
+        self,
+        run_id: str,
+        *,
+        note_id: str = "note:self",
+        project_id: str = "project:xyz",
+        content: str = "The budget is $1M.",
+        findings: Optional[dict[str, Any]] = None,
+    ) -> None:
         self.id = run_id
+        self.note_id = note_id
+        self.project_id = project_id
         self.status = "pending"
-        self.findings: Optional[dict[str, Any]] = None
+        self.findings: Optional[dict[str, Any]] = findings
         self.summary: Optional[dict[str, Any]] = None
         self.error_message: Optional[str] = None
         self.finished_at = None
-        self.content_hash = content_hash("The budget is $1M.")
+        self.content_hash = content_hash(content)
 
     async def save(self) -> None:
         return None
@@ -337,3 +350,336 @@ async def test_run_artifact_review_passed_for_benign_verdicts(monkeypatch):
     assert fake_run.summary is not None
     assert fake_run.summary["claim_count"] == 3
     assert fake_run.summary["memory_finding_count"] == 2
+
+
+def test_merge_reports_namespaces_memory_finding_ids_across_batches():
+    """Colliding memory ids across batches must not drop later memory_conflict."""
+    batch0 = ReviewReport(
+        claims=[
+            ClaimFinding(
+                finding_id="claim_1",
+                claim_text="Budget is $1M",
+                source_verdict="supported",
+            )
+        ],
+        memory_findings=[
+            MemoryFinding(
+                finding_id="memory_1",
+                claim_text="Budget is $1M",
+                memory_verdict="memory_aligned",
+                rationale="Matches",
+            )
+        ],
+    )
+    batch1 = ReviewReport(
+        claims=[
+            ClaimFinding(
+                finding_id="claim_2",
+                claim_text="Deadline is June",
+                source_verdict="supported",
+            )
+        ],
+        memory_findings=[
+            MemoryFinding(
+                finding_id="memory_1",
+                claim_text="Deadline is June",
+                memory_verdict="memory_conflict",
+                rationale="Memory says July",
+            )
+        ],
+    )
+    merged = _merge_reports([batch0, batch1], truncated=False)
+    assert len(merged.memory_findings) == 2
+    assert {m.finding_id for m in merged.memory_findings} == {
+        "b0:memory_1",
+        "b1:memory_1",
+    }
+    assert any(m.memory_verdict == "memory_conflict" for m in merged.memory_findings)
+    assert aggregate_review_status(
+        source_verdicts=[c.source_verdict for c in merged.claims],
+        memory_verdicts=[m.memory_verdict for m in merged.memory_findings],
+    ) == "needs_review"
+
+
+@pytest.mark.asyncio
+async def test_apply_review_fixes_stale_run(monkeypatch):
+    content = "The budget is $1M."
+    report = ReviewReport(
+        claims=[
+            ClaimFinding(
+                finding_id="claim_1",
+                claim_text="The budget is $1M.",
+                source_verdict="unsupported",
+                claim_span="The budget is $1M.",
+                suggested_fix="The budget is $1.2M.",
+            )
+        ]
+    )
+    fake_run = _FakeRun(
+        "artifact_review_run:1",
+        content="original different content",
+        findings=report.model_dump(),
+    )
+    artifact = SimpleNamespace(id="note:self", content=content)
+
+    async def fake_get_artifact(note_id: str) -> Any:
+        return artifact
+
+    async def fake_get_run(run_id: str) -> _FakeRun:
+        return fake_run
+
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ProjectArtifact.get",
+        fake_get_artifact,
+    )
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ArtifactReviewRun.get",
+        fake_get_run,
+    )
+
+    with pytest.raises(InvalidInputError, match="stale"):
+        await apply_review_fixes(
+            note_id="note:self",
+            run_id="artifact_review_run:1",
+            finding_ids=["claim_1"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_apply_review_fixes_applies_claim_span(monkeypatch):
+    content = "The budget is $1M. Scope includes HVAC."
+    report = ReviewReport(
+        claims=[
+            ClaimFinding(
+                finding_id="claim_1",
+                claim_text="The budget is $1M.",
+                source_verdict="unsupported",
+                claim_span="The budget is $1M.",
+                suggested_fix="The budget is $1.2M.",
+            ),
+            ClaimFinding(
+                finding_id="claim_2",
+                claim_text="Scope includes HVAC.",
+                source_verdict="unsupported",
+                claim_span="Scope includes HVAC.",
+                suggested_fix="Scope includes HVAC and plumbing.",
+            ),
+        ]
+    )
+    fake_run = _FakeRun(
+        "artifact_review_run:1",
+        content=content,
+        findings=report.model_dump(),
+    )
+    artifact = SimpleNamespace(id="note:self", content=content, saved=False)
+
+    async def fake_get_artifact(note_id: str) -> Any:
+        return artifact
+
+    async def fake_get_run(run_id: str) -> _FakeRun:
+        return fake_run
+
+    async def fake_save() -> None:
+        artifact.saved = True
+
+    artifact.save = fake_save
+
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ProjectArtifact.get",
+        fake_get_artifact,
+    )
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ArtifactReviewRun.get",
+        fake_get_run,
+    )
+
+    updated, skipped = await apply_review_fixes(
+        note_id="note:self",
+        run_id="artifact_review_run:1",
+        finding_ids=["claim_1"],
+    )
+
+    assert updated.content == "The budget is $1.2M. Scope includes HVAC."
+    assert skipped == []
+    assert artifact.saved is True
+
+
+@pytest.mark.asyncio
+async def test_apply_review_fixes_skips_missing_spans(monkeypatch):
+    content = "The budget is $1M."
+    report = ReviewReport(
+        claims=[
+            ClaimFinding(
+                finding_id="claim_1",
+                claim_text="gone",
+                source_verdict="unsupported",
+                claim_span="This span is not in the content",
+                suggested_fix="replacement",
+            )
+        ]
+    )
+    fake_run = _FakeRun(
+        "artifact_review_run:1",
+        content=content,
+        findings=report.model_dump(),
+    )
+    artifact = SimpleNamespace(id="note:self", content=content, saved=False)
+
+    async def fake_get_artifact(note_id: str) -> Any:
+        return artifact
+
+    async def fake_get_run(run_id: str) -> _FakeRun:
+        return fake_run
+
+    async def fake_save() -> None:
+        artifact.saved = True
+
+    artifact.save = fake_save
+
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ProjectArtifact.get",
+        fake_get_artifact,
+    )
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ArtifactReviewRun.get",
+        fake_get_run,
+    )
+
+    updated, skipped = await apply_review_fixes(
+        note_id="note:self",
+        run_id="artifact_review_run:1",
+        finding_ids=["claim_1"],
+    )
+
+    assert updated.content == content
+    assert skipped == ["This span is not in the content"]
+    assert artifact.saved is False
+
+
+@pytest.mark.asyncio
+async def test_apply_review_fixes_rejects_mismatched_note(monkeypatch):
+    content = "The budget is $1M."
+    report = ReviewReport(
+        claims=[
+            ClaimFinding(
+                finding_id="claim_1",
+                claim_text="The budget is $1M.",
+                source_verdict="unsupported",
+                claim_span="The budget is $1M.",
+                suggested_fix="The budget is $1.2M.",
+            )
+        ]
+    )
+    fake_run = _FakeRun(
+        "artifact_review_run:1",
+        note_id="note:other",
+        content=content,
+        findings=report.model_dump(),
+    )
+    artifact = SimpleNamespace(id="note:self", content=content)
+
+    async def fake_get_artifact(note_id: str) -> Any:
+        return artifact
+
+    async def fake_get_run(run_id: str) -> _FakeRun:
+        return fake_run
+
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ProjectArtifact.get",
+        fake_get_artifact,
+    )
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ArtifactReviewRun.get",
+        fake_get_run,
+    )
+
+    with pytest.raises(NotFoundError, match="Review run not found"):
+        await apply_review_fixes(
+            note_id="note:self",
+            run_id="artifact_review_run:1",
+            finding_ids=["claim_1"],
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_artifact_review_fails_run_on_load_error(monkeypatch):
+    fake_run = _FakeRun("artifact_review_run:1")
+    fail_called = {"n": 0}
+
+    async def fake_get_run(run_id: str) -> _FakeRun:
+        return fake_run
+
+    async def fake_get_artifact(note_id: str) -> Any:
+        raise RuntimeError("db unavailable")
+
+    async def fake_fail(*, run_id: str, error_message: str) -> _FakeRun:
+        fail_called["n"] += 1
+        fake_run.status = "failed"
+        fake_run.error_message = error_message
+        return fake_run
+
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ArtifactReviewRun.get",
+        fake_get_run,
+    )
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ProjectArtifact.get",
+        fake_get_artifact,
+    )
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.fail_run",
+        fake_fail,
+    )
+
+    with pytest.raises(RuntimeError, match="db unavailable"):
+        await run_artifact_review(
+            note_id="note:self",
+            project_id="project:xyz",
+            run_id="artifact_review_run:1",
+        )
+
+    assert fail_called["n"] == 1
+    assert fake_run.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_run_artifact_review_rejects_mismatched_ids(monkeypatch):
+    fake_run = _FakeRun(
+        "artifact_review_run:1",
+        note_id="note:other",
+        project_id="project:xyz",
+    )
+    artifact = SimpleNamespace(id="note:self", content="The budget is $1M.")
+
+    async def fake_get_run(run_id: str) -> _FakeRun:
+        return fake_run
+
+    async def fake_get_artifact(note_id: str) -> Any:
+        return artifact
+
+    async def fake_fail(*, run_id: str, error_message: str) -> _FakeRun:
+        fake_run.status = "failed"
+        fake_run.error_message = error_message
+        return fake_run
+
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ArtifactReviewRun.get",
+        fake_get_run,
+    )
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.ProjectArtifact.get",
+        fake_get_artifact,
+    )
+    monkeypatch.setattr(
+        "construction_os.services.artifact_review.fail_run",
+        fake_fail,
+    )
+
+    with pytest.raises(InvalidInputError, match="note_id"):
+        await run_artifact_review(
+            note_id="note:self",
+            project_id="project:xyz",
+            run_id="artifact_review_run:1",
+        )
+
+    assert fake_run.status == "failed"

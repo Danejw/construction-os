@@ -188,22 +188,28 @@ def _build_summary(report: ReviewReport) -> dict[str, Any]:
 def _merge_reports(
     parts: Sequence[ReviewReport], *, truncated: bool
 ) -> ReviewReport:
+    """Merge batch reports; namespace memory finding_ids per batch to avoid collisions."""
     claims: list[ClaimFinding] = []
     memory_findings: list[MemoryFinding] = []
     notes_parts: list[str] = []
     seen_claim_ids: set[str] = set()
     seen_memory_ids: set[str] = set()
-    for part in parts:
+    for batch_idx, part in enumerate(parts):
         for claim in part.claims:
             if claim.finding_id in seen_claim_ids:
                 continue
             seen_claim_ids.add(claim.finding_id)
             claims.append(claim)
         for memory in part.memory_findings:
-            if memory.finding_id in seen_memory_ids:
+            # Judge batches often reuse ids like memory_1; namespace so later
+            # batches do not drop distinct findings (e.g. memory_conflict).
+            namespaced_id = f"b{batch_idx}:{memory.finding_id}"
+            if namespaced_id in seen_memory_ids:
                 continue
-            seen_memory_ids.add(memory.finding_id)
-            memory_findings.append(memory)
+            seen_memory_ids.add(namespaced_id)
+            memory_findings.append(
+                memory.model_copy(update={"finding_id": namespaced_id})
+            )
         if part.notes:
             notes_parts.append(part.notes)
     return ReviewReport(
@@ -295,6 +301,16 @@ async def _judge_batch(
     )
 
 
+async def _fail_run_safe(*, run_id: str, error_message: str) -> None:
+    """Mark a run failed without masking the original error if fail_run itself fails."""
+    try:
+        await fail_run(run_id=run_id, error_message=error_message)
+    except Exception as fail_exc:
+        logger.exception(
+            "Could not mark artifact review run {} as failed: {}", run_id, fail_exc
+        )
+
+
 async def run_artifact_review(
     *,
     note_id: str,
@@ -303,14 +319,23 @@ async def run_artifact_review(
     model_id: Optional[str] = None,
 ) -> ArtifactReviewRun:
     """Segment, retrieve, judge, and persist a factual review run."""
-    await ArtifactReviewRun.get(run_id)
-    artifact = await ProjectArtifact.get(note_id)
-    content = (artifact.content or "").strip()
-    if not content:
-        await fail_run(run_id=run_id, error_message="Artifact content cannot be empty")
-        raise ValueError("Artifact content cannot be empty")
-
     try:
+        run = await ArtifactReviewRun.get(run_id)
+        artifact = await ProjectArtifact.get(note_id)
+
+        if str(ensure_record_id(run.note_id)) != str(ensure_record_id(note_id)):
+            raise InvalidInputError(
+                "Review run note_id does not match the requested artifact"
+            )
+        if str(ensure_record_id(run.project_id)) != str(ensure_record_id(project_id)):
+            raise InvalidInputError(
+                "Review run project_id does not match the requested project"
+            )
+
+        content = (artifact.content or "").strip()
+        if not content:
+            raise ValueError("Artifact content cannot be empty")
+
         await mark_run_running(run_id)
 
         segment = await _segment_claims(content=content, model_id=model_id)
@@ -363,11 +388,15 @@ async def run_artifact_review(
         )
     except ValueError as exc:
         logger.error("Artifact review permanent failure for {}: {}", run_id, exc)
-        await fail_run(run_id=run_id, error_message=str(exc))
+        await _fail_run_safe(run_id=run_id, error_message=str(exc))
+        raise
+    except InvalidInputError as exc:
+        logger.error("Artifact review invalid input for {}: {}", run_id, exc)
+        await _fail_run_safe(run_id=run_id, error_message=str(exc))
         raise
     except Exception as exc:
         logger.exception("Artifact review failed for {}: {}", run_id, exc)
-        await fail_run(run_id=run_id, error_message=str(exc))
+        await _fail_run_safe(run_id=run_id, error_message=str(exc))
         raise
 
 
