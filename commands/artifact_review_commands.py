@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import field_validator
 from surreal_commands import CommandInput, CommandOutput, command
 
+from construction_os.exceptions import InvalidInputError
 from construction_os.services.artifact_review import run_artifact_review
 
 
@@ -35,7 +36,7 @@ class ReviewArtifactOutput(CommandOutput):
         "wait_strategy": "exponential_jitter",
         "wait_min": 2,
         "wait_max": 60,
-        "stop_on": [ValueError],
+        "stop_on": [ValueError, InvalidInputError],
         "retry_log_level": "debug",
     },
 )

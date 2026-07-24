@@ -263,16 +263,34 @@ export function ArtifactsColumn({
       return
     }
     try {
-      await applyReviewFixes.mutateAsync({
+      const result = await applyReviewFixes.mutateAsync({
         noteId: findingsNote.id,
         data: {
           run_id: findingsRun.id,
           finding_ids: findingIds,
         },
       })
+      const skipped = result.skipped_spans
+      const contentUnchanged =
+        (findingsNote.content ?? '') === (result.artifact.content ?? '')
+      const allSkipped =
+        skipped.length > 0 && skipped.length >= findingIds.length
+      if (allSkipped || contentUnchanged) {
+        toast({
+          title: t('common.warning'),
+          description:
+            skipped.length > 0
+              ? `${t('projects.reviewNoFixes')}: ${skipped.join(', ')}`
+              : t('projects.reviewNoFixes'),
+        })
+        return
+      }
       toast({
         title: t('common.success'),
-        description: t('projects.artifactUpdatedSuccess'),
+        description:
+          skipped.length > 0
+            ? `${t('projects.artifactUpdatedSuccess')} (${skipped.join(', ')})`
+            : t('projects.artifactUpdatedSuccess'),
       })
     } catch (error) {
       toast({

@@ -22,7 +22,8 @@ import type {
   ProjectArtifactResponse,
 } from '@/lib/types/api'
 import {
-  findingHasSuggestedFix,
+  isClaimFindingFixable,
+  isMemoryFindingFixable,
   parseArtifactReviewFindings,
 } from '@/lib/utils/artifact-review-findings'
 
@@ -110,10 +111,10 @@ export function ArtifactReviewFindingsDialog({
   const fixableIds = useMemo(() => {
     const ids: string[] = []
     for (const claim of report.claims) {
-      if (findingHasSuggestedFix(claim)) ids.push(claim.finding_id)
+      if (isClaimFindingFixable(claim)) ids.push(claim.finding_id)
     }
     for (const memory of report.memory_findings) {
-      if (findingHasSuggestedFix(memory)) ids.push(memory.finding_id)
+      if (isMemoryFindingFixable(memory)) ids.push(memory.finding_id)
     }
     return ids
   }, [report])
@@ -159,7 +160,7 @@ export function ArtifactReviewFindingsDialog({
   )
 
   const renderClaim = (claim: ArtifactReviewClaimFinding) => {
-    const selectable = findingHasSuggestedFix(claim)
+    const selectable = isClaimFindingFixable(claim)
     return (
       <FindingRow
         key={claim.finding_id}
@@ -176,7 +177,7 @@ export function ArtifactReviewFindingsDialog({
   }
 
   const renderMemory = (finding: ArtifactReviewMemoryFinding) => {
-    const selectable = findingHasSuggestedFix(finding)
+    const selectable = isMemoryFindingFixable(finding)
     return (
       <FindingRow
         key={finding.finding_id}

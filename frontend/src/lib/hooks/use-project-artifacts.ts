@@ -130,6 +130,9 @@ export function useUpdateProjectArtifact() {
     },
     onSuccess: (result, { id }) => {
       queryClient.setQueryData(QUERY_KEYS.projectArtifact(id), result)
+      void queryClient.invalidateQueries({
+        queryKey: QUERY_KEYS.artifactReview(id),
+      })
       toast({
         title: t('common.success'),
         description: t('projects.artifactUpdatedSuccess'),

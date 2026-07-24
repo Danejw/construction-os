@@ -109,8 +109,16 @@ export function parseArtifactReviewFindings(
   }
 }
 
-export function findingHasSuggestedFix(
-  finding: Pick<ArtifactReviewClaimFinding, 'suggested_fix'>
+/** Claims are applyable only when both suggested_fix and claim_span exist. */
+export function isClaimFindingFixable(
+  finding: Pick<ArtifactReviewClaimFinding, 'suggested_fix' | 'claim_span'>
 ): boolean {
-  return Boolean(finding.suggested_fix?.trim())
+  return Boolean(finding.suggested_fix?.trim() && finding.claim_span?.trim())
+}
+
+/** Memory findings need suggested_fix and exact claim_text usable as a span. */
+export function isMemoryFindingFixable(
+  finding: Pick<ArtifactReviewMemoryFinding, 'suggested_fix' | 'claim_text'>
+): boolean {
+  return Boolean(finding.suggested_fix?.trim() && finding.claim_text?.trim())
 }
