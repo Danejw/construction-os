@@ -1,4 +1,4 @@
-"""Project Operator foundation for Construction OS."""
+"""Project Operator capabilities for Construction OS."""
 
 from construction_os.project_operator.models import (
     OperatorAutomationLevel,
@@ -9,6 +9,17 @@ from construction_os.project_operator.models import (
     OperatorOperationRequest,
     OperatorOperationResult,
 )
+from construction_os.project_operator.operational_state import (
+    EvidenceCreate,
+    EvidenceRecord,
+    InMemoryOperationalStateRepository,
+    OperationalRecord,
+    OperationalRecordCreate,
+    OperationalRecordType,
+    OperationalStateService,
+    OperationalStatus,
+    SurrealOperationalStateRepository,
+)
 from construction_os.project_operator.permissions import ProjectOperatorPermissions
 from construction_os.project_operator.repository import (
     InMemoryProjectOperatorRepository,
@@ -17,7 +28,15 @@ from construction_os.project_operator.repository import (
 from construction_os.project_operator.service import ProjectOperatorService
 
 __all__ = [
+    "EvidenceCreate",
+    "EvidenceRecord",
+    "InMemoryOperationalStateRepository",
     "InMemoryProjectOperatorRepository",
+    "OperationalRecord",
+    "OperationalRecordCreate",
+    "OperationalRecordType",
+    "OperationalStateService",
+    "OperationalStatus",
     "OperatorAutomationLevel",
     "OperatorConfig",
     "OperatorConfigUpdate",
@@ -28,4 +47,5 @@ __all__ = [
     "ProjectOperatorPermissions",
     "ProjectOperatorRepository",
     "ProjectOperatorService",
+    "SurrealOperationalStateRepository",
 ]
