@@ -287,16 +287,17 @@ async def test_overlapping_shared_resource_assignments_create_one_conflict() -> 
             ends_at=datetime(2026, 8, 21, tzinfo=timezone.utc),
         ),
     )
-    await service.assign_resource(
-        organization.id,
-        ResourceAssignmentCreate(
-            resource_key="crew:electrical-one",
-            resource_name="Electrical Crew 1",
-            project_id="project:hidden",
-            starts_at=datetime(2026, 8, 5, tzinfo=timezone.utc),
-            ends_at=datetime(2026, 8, 12, tzinfo=timezone.utc),
-        ),
-    )
+    with pytest.raises(ValueError, match="project is unavailable"):
+        await service.assign_resource(
+            organization.id,
+            ResourceAssignmentCreate(
+                resource_key="crew:electrical-one",
+                resource_name="Electrical Crew 1",
+                project_id="project:hidden",
+                starts_at=datetime(2026, 8, 5, tzinfo=timezone.utc),
+                ends_at=datetime(2026, 8, 12, tzinfo=timezone.utc),
+            ),
+        )
 
     overview = await service.build_overview(organization.id)
 
