@@ -6,7 +6,7 @@ on:
       - dev
       - main
     paths:
-      - 'api/routers/project_operator.py'
+      - 'api/routers/project_operator*.py'
       - 'api/routers/__init__.py'
       - 'construction_os/project_operator/**'
       - 'tests/test_project_operator*.py'
@@ -16,8 +16,9 @@ on:
       - dev
       - main
       - 'feature/project-operator-*'
+      - 'feature/operator-*'
     paths:
-      - 'api/routers/project_operator.py'
+      - 'api/routers/project_operator*.py'
       - 'api/routers/__init__.py'
       - 'construction_os/project_operator/**'
       - 'tests/test_project_operator*.py'
@@ -52,14 +53,14 @@ jobs:
       - name: Check Project Operator lint
         run: |
           python -m ruff check \
-            api/routers/project_operator.py \
+            api/routers/project_operator*.py \
             construction_os/project_operator \
             tests/test_project_operator*.py
 
       - name: Compile Project Operator modules
         run: |
           python -m compileall -q \
-            api/routers/project_operator.py \
+            api/routers/project_operator*.py \
             construction_os/project_operator
 
       - name: Run Project Operator tests
