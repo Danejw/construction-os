@@ -141,7 +141,9 @@ class ProposedActionCreate(BaseModel):
     @model_validator(mode="after")
     def validate_inputs(self) -> "ProposedActionCreate":
         definition = ACTION_DEFINITIONS[self.action_type]
-        missing = [key for key in definition.required_inputs if not self.inputs.get(key)]
+        missing = [
+            key for key in definition.required_inputs if not self.inputs.get(key)
+        ]
         if missing:
             raise ValueError(f"missing required action inputs: {missing}")
         return self
@@ -190,7 +192,9 @@ class ActionExecutionRequest(BaseModel):
     def required_execution_identity(cls, value: str) -> str:
         normalized = str(value or "").strip()
         if not normalized:
-            raise ValueError("execution identity and idempotency key cannot be empty")
+            raise ValueError(
+                "execution identity and idempotency key cannot be empty"
+            )
         return normalized
 
 
@@ -212,12 +216,20 @@ class ActionExecution(BaseModel):
 
 class ActionRepository(Protocol):
     async def save_action(self, action: ProposedAction) -> ProposedAction: ...
+
     async def get_action(self, action_id: str) -> ProposedAction | None: ...
+
     async def list_actions(self, project_id: str) -> list[ProposedAction]: ...
+
     async def save_approval(self, approval: ActionApproval) -> ActionApproval: ...
+
     async def latest_approval(self, action_id: str) -> ActionApproval | None: ...
+
     async def save_execution(self, execution: ActionExecution) -> ActionExecution: ...
-    async def get_execution_by_key(self, idempotency_key: str) -> ActionExecution | None: ...
+
+    async def get_execution_by_key(
+        self, idempotency_key: str
+    ) -> ActionExecution | None: ...
 
 
 class InMemoryActionRepository:
@@ -253,15 +265,21 @@ class InMemoryActionRepository:
 
     async def latest_approval(self, action_id: str) -> ActionApproval | None:
         async with self._lock:
-            matches = [item for item in self._approvals if item.action_id == action_id]
+            matches = [
+                item for item in self._approvals if item.action_id == action_id
+            ]
             return matches[-1].model_copy(deep=True) if matches else None
 
     async def save_execution(self, execution: ActionExecution) -> ActionExecution:
         async with self._lock:
-            self._executions[execution.idempotency_key] = execution.model_copy(deep=True)
+            self._executions[execution.idempotency_key] = execution.model_copy(
+                deep=True
+            )
             return execution.model_copy(deep=True)
 
-    async def get_execution_by_key(self, idempotency_key: str) -> ActionExecution | None:
+    async def get_execution_by_key(
+        self, idempotency_key: str
+    ) -> ActionExecution | None:
         async with self._lock:
             item = self._executions.get(idempotency_key)
             return item.model_copy(deep=True) if item else None
@@ -275,55 +293,77 @@ class SurrealActionRepository:
             "DEFINE TABLE IF NOT EXISTS operator_execution SCHEMALESS;"
         )
 
-    async def _upsert(self, record_id: str, model: BaseModel) -> dict[str, object]:
+    async def _upsert(
+        self, record_id: str, model: BaseModel
+    ) -> dict[str, object]:
         await self._ensure_tables()
         result = await repo_query(
             "UPSERT $id CONTENT $data RETURN AFTER;",
-            {"id": ensure_record_id(record_id), "data": model.model_dump(mode="json", exclude={"id"})},
+            {
+                "id": ensure_record_id(record_id),
+                "data": model.model_dump(mode="json", exclude={"id"}),
+            },
         )
         return result[0]
 
     async def save_action(self, action: ProposedAction) -> ProposedAction:
-        return ProposedAction(id=action.id, **await self._upsert(action.id, action))
+        return ProposedAction(
+            id=action.id,
+            **await self._upsert(action.id, action),
+        )
 
     async def get_action(self, action_id: str) -> ProposedAction | None:
         await self._ensure_tables()
-        result = await repo_query("SELECT * FROM $id;", {"id": ensure_record_id(action_id)})
+        result = await repo_query(
+            "SELECT * FROM $id;",
+            {"id": ensure_record_id(action_id)},
+        )
         return ProposedAction(id=action_id, **result[0]) if result else None
 
     async def list_actions(self, project_id: str) -> list[ProposedAction]:
         await self._ensure_tables()
         result = await repo_query(
-            "SELECT * FROM operator_action WHERE project_id = $project_id ORDER BY created_at DESC;",
+            "SELECT * FROM operator_action WHERE project_id = $project_id "
+            "ORDER BY created_at DESC;",
             {"project_id": project_id},
         )
         return [ProposedAction(**item) for item in result]
 
     async def save_approval(self, approval: ActionApproval) -> ActionApproval:
-        return ActionApproval(id=approval.id, **await self._upsert(approval.id, approval))
+        return ActionApproval(
+            id=approval.id,
+            **await self._upsert(approval.id, approval),
+        )
 
     async def latest_approval(self, action_id: str) -> ActionApproval | None:
         await self._ensure_tables()
         result = await repo_query(
-            "SELECT * FROM operator_approval WHERE action_id = $action_id ORDER BY created_at DESC LIMIT 1;",
+            "SELECT * FROM operator_approval WHERE action_id = $action_id "
+            "ORDER BY created_at DESC LIMIT 1;",
             {"action_id": action_id},
         )
         return ActionApproval(**result[0]) if result else None
 
     async def save_execution(self, execution: ActionExecution) -> ActionExecution:
-        return ActionExecution(id=execution.id, **await self._upsert(execution.id, execution))
+        return ActionExecution(
+            id=execution.id,
+            **await self._upsert(execution.id, execution),
+        )
 
-    async def get_execution_by_key(self, idempotency_key: str) -> ActionExecution | None:
+    async def get_execution_by_key(
+        self, idempotency_key: str
+    ) -> ActionExecution | None:
         await self._ensure_tables()
         result = await repo_query(
-            "SELECT * FROM operator_execution WHERE idempotency_key = $key LIMIT 1;",
+            "SELECT * FROM operator_execution WHERE idempotency_key = $key "
+            "LIMIT 1;",
             {"key": idempotency_key},
         )
         return ActionExecution(**result[0]) if result else None
 
 
 class SafeActionExecutor:
-    """Deterministic local executor for bounded internal and draft-producing actions."""
+    """Deterministic executor for bounded internal and draft-producing actions."""
 
     async def execute(
         self,
@@ -355,10 +395,14 @@ class ActionRuntimeService:
         self.ledger = ledger
         self.executor = executor or SafeActionExecutor()
 
-    async def propose(self, project_id: str, body: ProposedActionCreate) -> ProposedAction:
+    async def propose(
+        self, project_id: str, body: ProposedActionCreate
+    ) -> ProposedAction:
         config = await self.operator.get_config(project_id)
         if not ProjectOperatorPermissions.can_recommend(config):
-            raise ValueError("project operator configuration does not allow recommendations")
+            raise ValueError(
+                "project operator configuration does not allow recommendations"
+            )
         now = utc_now()
         action = ProposedAction(
             id=f"operator_action:{uuid4().hex}",
@@ -368,7 +412,13 @@ class ActionRuntimeService:
             **body.model_dump(),
         )
         saved = await self.repository.save_action(action)
-        await self._event(saved, ProjectEventType.ACTION_PROPOSED, "Action proposed", EventActorType.AGENT, body.proposed_by)
+        await self._event(
+            saved,
+            ProjectEventType.ACTION_PROPOSED,
+            "Action proposed",
+            EventActorType.AGENT,
+            body.proposed_by,
+        )
         return saved
 
     async def list_actions(self, project_id: str) -> list[ProposedAction]:
@@ -398,15 +448,22 @@ class ActionRuntimeService:
         await self.repository.save_approval(approval)
         updated = action.model_copy(
             update={
-                "status": ActionStatus.APPROVED if approved else ActionStatus.REJECTED,
+                "status": (
+                    ActionStatus.APPROVED if approved else ActionStatus.REJECTED
+                ),
                 "updated_at": utc_now(),
             }
         )
         saved = await self.repository.save_action(updated)
         await self._event(
             saved,
-            ProjectEventType.ACTION_APPROVED if approved else ProjectEventType.ACTION_REJECTED,
-            decision.reason or ("Action approved" if approved else "Action rejected"),
+            (
+                ProjectEventType.ACTION_APPROVED
+                if approved
+                else ProjectEventType.ACTION_REJECTED
+            ),
+            decision.reason
+            or ("Action approved" if approved else "Action rejected"),
             EventActorType.HUMAN,
             decision.actor_id,
         )
@@ -420,9 +477,28 @@ class ActionRuntimeService:
     ) -> ActionExecution:
         action = await self._get_project_action(project_id, action_id)
         definition = ACTION_DEFINITIONS[action.action_type]
+        if request.actor_role not in definition.allowed_roles:
+            raise ValueError("actor role is not allowed to dry-run this action")
         if not definition.dry_run_supported:
             raise ValueError("this action does not support dry runs")
-        return await self._execute(action, request, definition, dry_run=True)
+        dry_run_request = request.model_copy(
+            update={
+                "idempotency_key": f"dry-run:{request.idempotency_key}",
+            }
+        )
+        existing = await self.repository.get_execution_by_key(
+            dry_run_request.idempotency_key
+        )
+        if existing:
+            if existing.project_id != project_id or existing.action_id != action_id:
+                raise ValueError("idempotency key is already used by another action")
+            return existing
+        return await self._execute(
+            action,
+            dry_run_request,
+            definition,
+            dry_run=True,
+        )
 
     async def execute(
         self,
@@ -430,33 +506,61 @@ class ActionRuntimeService:
         action_id: str,
         request: ActionExecutionRequest,
     ) -> ActionExecution:
-        existing = await self.repository.get_execution_by_key(request.idempotency_key)
+        existing = await self.repository.get_execution_by_key(
+            request.idempotency_key
+        )
         if existing:
             if existing.project_id != project_id or existing.action_id != action_id:
                 raise ValueError("idempotency key is already used by another action")
             return existing
         action = await self._get_project_action(project_id, action_id)
+        if action.status == ActionStatus.EXECUTED:
+            raise ValueError("action has already been executed")
         definition = ACTION_DEFINITIONS[action.action_type]
         config = await self.operator.get_config(project_id)
-        if not ProjectOperatorPermissions.can_execute_approved(config, approved=True):
-            raise ValueError("project operator configuration does not allow approved execution")
+        if not ProjectOperatorPermissions.can_execute_approved(
+            config,
+            approved=True,
+        ):
+            raise ValueError(
+                "project operator configuration does not allow approved execution"
+            )
         approval = await self.repository.latest_approval(action_id)
-        if definition.approval_required and (approval is None or not approval.approved):
+        if definition.approval_required and (
+            approval is None or not approval.approved
+        ):
             raise ValueError("action requires an explicit approval")
         if request.actor_role not in definition.allowed_roles:
             raise ValueError("actor role is not allowed to execute this action")
-        execution = await self._execute(action, request, definition, dry_run=False)
+        execution = await self._execute(
+            action,
+            request,
+            definition,
+            dry_run=False,
+        )
         updated = action.model_copy(
             update={
-                "status": ActionStatus.EXECUTED if execution.verified else ActionStatus.FAILED,
+                "status": (
+                    ActionStatus.EXECUTED
+                    if execution.verified
+                    else ActionStatus.FAILED
+                ),
                 "updated_at": utc_now(),
             }
         )
         await self.repository.save_action(updated)
         await self._event(
             updated,
-            ProjectEventType.ACTION_EXECUTED if execution.verified else ProjectEventType.ACTION_FAILED,
-            "Action execution verified" if execution.verified else "Action execution failed verification",
+            (
+                ProjectEventType.ACTION_EXECUTED
+                if execution.verified
+                else ProjectEventType.ACTION_FAILED
+            ),
+            (
+                "Action execution verified"
+                if execution.verified
+                else "Action execution failed verification"
+            ),
             EventActorType.TOOL,
             definition.execution_tool,
         )
@@ -470,14 +574,28 @@ class ActionRuntimeService:
         *,
         dry_run: bool,
     ) -> ActionExecution:
-        result = await self.executor.execute(definition, action.inputs, dry_run=dry_run)
-        verified = bool(result.get("reference") and result.get("output") is not None)
+        result = await self.executor.execute(
+            definition,
+            action.inputs,
+            dry_run=dry_run,
+        )
+        verified = bool(
+            result.get("reference") and result.get("output") is not None
+        )
         execution = ActionExecution(
             id=f"operator_execution:{uuid4().hex}",
             project_id=action.project_id,
             action_id=action.id,
             idempotency_key=request.idempotency_key,
-            status=ExecutionStatus.DRY_RUN if dry_run else (ExecutionStatus.SUCCEEDED if verified else ExecutionStatus.FAILED),
+            status=(
+                ExecutionStatus.DRY_RUN
+                if dry_run
+                else (
+                    ExecutionStatus.SUCCEEDED
+                    if verified
+                    else ExecutionStatus.FAILED
+                )
+            ),
             dry_run=dry_run,
             tool_name=definition.execution_tool,
             arguments=action.inputs,
@@ -487,7 +605,11 @@ class ActionRuntimeService:
         )
         return await self.repository.save_execution(execution)
 
-    async def _get_project_action(self, project_id: str, action_id: str) -> ProposedAction:
+    async def _get_project_action(
+        self,
+        project_id: str,
+        action_id: str,
+    ) -> ProposedAction:
         action = await self.repository.get_action(action_id)
         if action is None or action.project_id != project_id:
             raise ValueError("action is unavailable for this project")
