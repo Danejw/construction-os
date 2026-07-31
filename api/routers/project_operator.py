@@ -6,6 +6,15 @@ import os
 
 from fastapi import APIRouter, HTTPException, Query
 
+from construction_os.project_operator.event_ledger import (
+    InMemoryProjectEventRepository,
+    ProjectEvent,
+    ProjectEventCreate,
+    ProjectEventLedgerService,
+    RecordTransitionRequest,
+    StateReconciliationService,
+    SurrealProjectEventRepository,
+)
 from construction_os.project_operator.models import (
     OperatorConfig,
     OperatorConfigUpdate,
@@ -32,12 +41,20 @@ from construction_os.project_operator.service import ProjectOperatorService
 router = APIRouter()
 repository = InMemoryProjectOperatorRepository()
 service = ProjectOperatorService(repository)
+_database_enabled = bool(os.getenv("SURREAL_URL") or os.getenv("SURREAL_ADDRESS"))
 state_repository = (
     SurrealOperationalStateRepository()
-    if os.getenv("SURREAL_URL") or os.getenv("SURREAL_ADDRESS")
+    if _database_enabled
     else InMemoryOperationalStateRepository()
 )
+event_repository = (
+    SurrealProjectEventRepository()
+    if _database_enabled
+    else InMemoryProjectEventRepository()
+)
 state_service = OperationalStateService(state_repository)
+event_service = ProjectEventLedgerService(event_repository)
+reconciliation_service = StateReconciliationService(state_repository, event_service)
 
 
 @router.get(
@@ -118,5 +135,53 @@ async def list_operational_records(
     """List a project's operational state with optional type and status filters."""
     try:
         return await state_service.list_records(project_id, record_type, status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/projects/{project_id}/operator/events",
+    response_model=ProjectEvent,
+)
+async def append_project_event(
+    project_id: str, body: ProjectEventCreate
+) -> ProjectEvent:
+    """Append an immutable event to the project's operational ledger."""
+    try:
+        return await event_service.append(project_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/projects/{project_id}/operator/events",
+    response_model=list[ProjectEvent],
+)
+async def list_project_events(
+    project_id: str,
+    entity_id: str | None = Query(default=None),
+) -> list[ProjectEvent]:
+    """List project events in deterministic sequence order."""
+    try:
+        return await event_service.list_events(project_id, entity_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/projects/{project_id}/operator/state/{record_id}/transition",
+    response_model=OperationalRecord,
+)
+async def transition_operational_record(
+    project_id: str,
+    record_id: str,
+    body: RecordTransitionRequest,
+) -> OperationalRecord:
+    """Change current state while preserving the full prior state in the ledger."""
+    try:
+        record, _event = await reconciliation_service.transition(
+            project_id, record_id, body
+        )
+        return record
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
