@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -41,6 +42,13 @@ from construction_os.project_operator.repository import (
     InMemoryProjectOperatorRepository,
 )
 from construction_os.project_operator.service import ProjectOperatorService
+from construction_os.project_operator.signal_detection import (
+    InMemoryProjectSignalRepository,
+    ProjectSignal,
+    ProjectSignalDetectionService,
+    ProjectSignalStatus,
+    SurrealProjectSignalRepository,
+)
 
 router = APIRouter()
 repository = InMemoryProjectOperatorRepository()
@@ -56,10 +64,16 @@ event_repository = (
     if _database_enabled
     else InMemoryProjectEventRepository()
 )
+signal_repository = (
+    SurrealProjectSignalRepository()
+    if _database_enabled
+    else InMemoryProjectSignalRepository()
+)
 state_service = OperationalStateService(state_repository)
 event_service = ProjectEventLedgerService(event_repository)
 reconciliation_service = StateReconciliationService(state_repository, event_service)
 extraction_service = ObservationExtractionService(state_service, event_service)
+signal_service = ProjectSignalDetectionService(state_service, signal_repository)
 
 
 @router.get(
@@ -206,3 +220,46 @@ async def extract_source_observations(
         return await extraction_service.extract_and_store(project_id, source_id, body)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/projects/{project_id}/operator/signals/detect",
+    response_model=list[ProjectSignal],
+)
+async def detect_project_signals(
+    project_id: str,
+    now: datetime | None = Query(default=None),
+) -> list[ProjectSignal]:
+    """Compare observations and accepted state to produce actionable signals."""
+    try:
+        return await signal_service.detect(project_id, now=now)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/projects/{project_id}/operator/signals",
+    response_model=list[ProjectSignal],
+)
+async def list_project_signals(
+    project_id: str,
+    status: ProjectSignalStatus | None = Query(default=None),
+) -> list[ProjectSignal]:
+    """List project signals, optionally filtered by review status."""
+    return await signal_service.list_signals(project_id, status)
+
+
+@router.put(
+    "/projects/{project_id}/operator/signals/{signal_id}/status",
+    response_model=ProjectSignal,
+)
+async def update_project_signal_status(
+    project_id: str,
+    signal_id: str,
+    status: ProjectSignalStatus = Query(...),
+) -> ProjectSignal:
+    """Record review, dismissal, resolution, or conversion of a signal."""
+    try:
+        return await signal_service.update_status(project_id, signal_id, status)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
