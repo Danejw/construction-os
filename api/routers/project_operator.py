@@ -7,6 +7,11 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
+from construction_os.project_operator.approval_inbox import (
+    ApprovalInboxService,
+    OperatorApprovalInbox,
+    SignalCorrectionRequest,
+)
 from construction_os.project_operator.event_ledger import (
     InMemoryProjectEventRepository,
     ProjectEvent,
@@ -74,6 +79,7 @@ event_service = ProjectEventLedgerService(event_repository)
 reconciliation_service = StateReconciliationService(state_repository, event_service)
 extraction_service = ObservationExtractionService(state_service, event_service)
 signal_service = ProjectSignalDetectionService(state_service, signal_repository)
+inbox_service = ApprovalInboxService(signal_service, event_service)
 
 
 @router.get(
@@ -261,5 +267,30 @@ async def update_project_signal_status(
     """Record review, dismissal, resolution, or conversion of a signal."""
     try:
         return await signal_service.update_status(project_id, signal_id, status)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/projects/{project_id}/operator/inbox",
+    response_model=OperatorApprovalInbox,
+)
+async def get_operator_approval_inbox(project_id: str) -> OperatorApprovalInbox:
+    """Return the stable human-review projection for a project's operator."""
+    return await inbox_service.build(project_id)
+
+
+@router.post(
+    "/projects/{project_id}/operator/signals/{signal_id}/correction",
+    response_model=ProjectSignal,
+)
+async def correct_project_signal(
+    project_id: str,
+    signal_id: str,
+    body: SignalCorrectionRequest,
+) -> ProjectSignal:
+    """Capture a human correction and resolve the incorrect signal."""
+    try:
+        return await inbox_service.correct_signal(project_id, signal_id, body)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
