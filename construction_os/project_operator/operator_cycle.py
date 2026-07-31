@@ -12,19 +12,16 @@ from pydantic import BaseModel, Field, field_validator
 
 from construction_os.database.repository import ensure_record_id, repo_query
 from construction_os.project_operator.action_runtime import (
-    ActionExecution,
     ActionExecutionRequest,
     ActionRuntimeService,
     ActionStatus,
     OperatorActionType,
-    ProposedAction,
     ProposedActionCreate,
 )
 from construction_os.project_operator.observation_extraction import (
     ObservationExtractionService,
     SourceObservationRequest,
 )
-from construction_os.project_operator.operational_state import OperationalRecord
 from construction_os.project_operator.permissions import ProjectOperatorPermissions
 from construction_os.project_operator.service import ProjectOperatorService
 from construction_os.project_operator.signal_detection import (
@@ -170,7 +167,7 @@ class SurrealOperatorRunRepository:
 
 
 class OperatorCycleService:
-    """Runs extraction, reconciliation signals, actions, and verification in order."""
+    """Runs extraction, signal detection, recommendations, and verification."""
 
     def __init__(
         self,
@@ -195,7 +192,9 @@ class OperatorCycleService:
     ) -> OperatorRun:
         config = await self.operator.get_config(project_id)
         if not ProjectOperatorPermissions.can_observe(config):
-            raise ValueError("project operator configuration does not allow observation")
+            raise ValueError(
+                "project operator configuration does not allow observation"
+            )
         lock = await self._get_lock(project_id)
         if lock.locked():
             raise ValueError("an operator run is already active for this project")
@@ -210,23 +209,24 @@ class OperatorCycleService:
             )
             await self.repository.save(run)
             try:
-                run = await self._process_sources(run, request.sources)
-                run = await self._detect_signals(run, request.analysis_time)
-                if request.generate_actions and ProjectOperatorPermissions.can_recommend(
-                    config
+                await self._process_sources(run, request.sources)
+                await self._detect_signals(run, request.analysis_time)
+                if request.generate_actions and (
+                    ProjectOperatorPermissions.can_recommend(config)
                 ):
-                    run = await self._generate_actions(run)
-                run = await self._execute_approved(run, request)
+                    await self._generate_actions(run)
+                await self._execute_approved(run, request)
             except Exception as exc:  # defensive run-level boundary
                 run.errors.append(f"operator cycle failed: {exc}")
 
             run.completed_at = utc_now()
-            if run.errors and not (
+            has_output = bool(
                 run.observation_ids
                 or run.signal_ids
                 or run.action_ids
                 or run.execution_ids
-            ):
+            )
+            if run.errors and not has_output:
                 run.status = OperatorRunStatus.FAILED
             elif run.errors:
                 run.status = OperatorRunStatus.PARTIAL
@@ -297,7 +297,7 @@ class OperatorCycleService:
         self,
         run: OperatorRun,
         sources: list[OperatorCycleSource],
-    ) -> OperatorRun:
+    ) -> None:
         for item in sources:
             try:
                 records = await self.extraction.extract_and_store(
@@ -310,13 +310,12 @@ class OperatorCycleService:
             except Exception as exc:
                 run.errors.append(f"source {item.source_id}: {exc}")
         await self.repository.save(run)
-        return run
 
     async def _detect_signals(
         self,
         run: OperatorRun,
         analysis_time: datetime | None,
-    ) -> OperatorRun:
+    ) -> None:
         try:
             signals = await self.signals.detect(
                 run.project_id,
@@ -326,9 +325,8 @@ class OperatorCycleService:
         except Exception as exc:
             run.errors.append(f"signal detection: {exc}")
         await self.repository.save(run)
-        return run
 
-    async def _generate_actions(self, run: OperatorRun) -> OperatorRun:
+    async def _generate_actions(self, run: OperatorRun) -> None:
         for signal_id in run.signal_ids:
             signal = await self.signals.repository.get(signal_id)
             if signal is None:
@@ -348,13 +346,12 @@ class OperatorCycleService:
             except Exception as exc:
                 run.errors.append(f"action for signal {signal.id}: {exc}")
         await self.repository.save(run)
-        return run
 
     async def _execute_approved(
         self,
         run: OperatorRun,
         request: OperatorRunRequest,
-    ) -> OperatorRun:
+    ) -> None:
         for action_id in request.execute_approved_action_ids:
             try:
                 execution = await self.actions.execute(
@@ -370,10 +367,9 @@ class OperatorCycleService:
             except Exception as exc:
                 run.errors.append(f"execution {action_id}: {exc}")
         await self.repository.save(run)
-        return run
 
+    @staticmethod
     def _action_for_signal(
-        self,
         signal: ProjectSignal,
     ) -> ProposedActionCreate | None:
         common = {
