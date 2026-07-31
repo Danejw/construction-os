@@ -7,6 +7,16 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
+from construction_os.project_operator.action_runtime import (
+    ActionDecisionRequest,
+    ActionExecution,
+    ActionExecutionRequest,
+    ActionRuntimeService,
+    InMemoryActionRepository,
+    ProposedAction,
+    ProposedActionCreate,
+    SurrealActionRepository,
+)
 from construction_os.project_operator.approval_inbox import (
     ApprovalInboxService,
     OperatorApprovalInbox,
@@ -74,12 +84,20 @@ signal_repository = (
     if _database_enabled
     else InMemoryProjectSignalRepository()
 )
+action_repository = (
+    SurrealActionRepository() if _database_enabled else InMemoryActionRepository()
+)
 state_service = OperationalStateService(state_repository)
 event_service = ProjectEventLedgerService(event_repository)
 reconciliation_service = StateReconciliationService(state_repository, event_service)
 extraction_service = ObservationExtractionService(state_service, event_service)
 signal_service = ProjectSignalDetectionService(state_service, signal_repository)
 inbox_service = ApprovalInboxService(signal_service, event_service)
+action_service = ActionRuntimeService(
+    action_repository,
+    service,
+    event_service,
+)
 
 
 @router.get(
@@ -294,3 +312,101 @@ async def correct_project_signal(
         return await inbox_service.correct_signal(project_id, signal_id, body)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/projects/{project_id}/operator/actions",
+    response_model=ProposedAction,
+)
+async def propose_operator_action(
+    project_id: str,
+    body: ProposedActionCreate,
+) -> ProposedAction:
+    """Create a bounded action proposal after operator permission checks."""
+    try:
+        return await action_service.propose(project_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/projects/{project_id}/operator/actions",
+    response_model=list[ProposedAction],
+)
+async def list_operator_actions(project_id: str) -> list[ProposedAction]:
+    """List proposed and completed actions for a project."""
+    return await action_service.list_actions(project_id)
+
+
+@router.post(
+    "/projects/{project_id}/operator/actions/{action_id}/approve",
+    response_model=ProposedAction,
+)
+async def approve_operator_action(
+    project_id: str,
+    action_id: str,
+    body: ActionDecisionRequest,
+) -> ProposedAction:
+    """Approve an action with an attributed human decision."""
+    try:
+        return await action_service.decide(
+            project_id,
+            action_id,
+            body,
+            approved=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/projects/{project_id}/operator/actions/{action_id}/reject",
+    response_model=ProposedAction,
+)
+async def reject_operator_action(
+    project_id: str,
+    action_id: str,
+    body: ActionDecisionRequest,
+) -> ProposedAction:
+    """Reject an action without deleting its audit history."""
+    try:
+        return await action_service.decide(
+            project_id,
+            action_id,
+            body,
+            approved=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/projects/{project_id}/operator/actions/{action_id}/dry-run",
+    response_model=ActionExecution,
+)
+async def dry_run_operator_action(
+    project_id: str,
+    action_id: str,
+    body: ActionExecutionRequest,
+) -> ActionExecution:
+    """Preview exact tool arguments and deterministic output without execution."""
+    try:
+        return await action_service.dry_run(project_id, action_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/projects/{project_id}/operator/actions/{action_id}/execute",
+    response_model=ActionExecution,
+)
+async def execute_operator_action(
+    project_id: str,
+    action_id: str,
+    body: ActionExecutionRequest,
+) -> ActionExecution:
+    """Execute an approved action exactly once per idempotency key."""
+    try:
+        return await action_service.execute(project_id, action_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
