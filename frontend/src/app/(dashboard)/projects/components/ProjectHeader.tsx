@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { ProjectResponse } from '@/lib/types/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Archive, ArchiveRestore, Link2, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, Bot, Link2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useUpdateProject } from '@/lib/hooks/use-projects'
 import { ProjectDeleteDialog } from './ProjectDeleteDialog'
@@ -19,10 +21,12 @@ interface ProjectHeaderProps {
 
 export function ProjectHeader({ project, actions }: ProjectHeaderProps) {
   const { t } = useTranslation()
+  const pathname = usePathname()
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [copyingLink, setCopyingLink] = useState(false)
 
   const updateProject = useUpdateProject()
+  const isOperatorPage = pathname?.endsWith('/operator') ?? false
 
   const handleUpdateName = async (name: string) => {
     if (!name || name === project.name) return
@@ -80,6 +84,14 @@ export function ProjectHeader({ project, actions }: ProjectHeaderProps) {
 
           <div className="flex shrink-0 flex-nowrap items-center gap-1">
             {actions}
+            {!isOperatorPage ? (
+              <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
+                <Link href={`/projects/${encodeURIComponent(project.id)}/operator`}>
+                  <Bot className="h-3.5 w-3.5 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Operator</span>
+                </Link>
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               size="sm"
