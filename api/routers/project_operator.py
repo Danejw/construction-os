@@ -22,6 +22,10 @@ from construction_os.project_operator.models import (
     OperatorOperationRequest,
     OperatorOperationResult,
 )
+from construction_os.project_operator.observation_extraction import (
+    ObservationExtractionService,
+    SourceObservationRequest,
+)
 from construction_os.project_operator.operational_state import (
     EvidenceCreate,
     EvidenceRecord,
@@ -55,6 +59,7 @@ event_repository = (
 state_service = OperationalStateService(state_repository)
 event_service = ProjectEventLedgerService(event_repository)
 reconciliation_service = StateReconciliationService(state_repository, event_service)
+extraction_service = ObservationExtractionService(state_service, event_service)
 
 
 @router.get(
@@ -183,5 +188,21 @@ async def transition_operational_record(
             project_id, record_id, body
         )
         return record
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/projects/{project_id}/operator/sources/{source_id}/extract-observations",
+    response_model=list[OperationalRecord],
+)
+async def extract_source_observations(
+    project_id: str,
+    source_id: str,
+    body: SourceObservationRequest,
+) -> list[OperationalRecord]:
+    """Extract conservative, evidence-backed observations from source text."""
+    try:
+        return await extraction_service.extract_and_store(project_id, source_id, body)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
