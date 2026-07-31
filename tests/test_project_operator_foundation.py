@@ -1,6 +1,6 @@
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
 
 from api.routers.project_operator import router
 from construction_os.project_operator.models import (
